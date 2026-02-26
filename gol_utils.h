@@ -24,7 +24,7 @@ bool initSimulation(int argc, char **argv, Grid &grid, SimParams &params);
 void printHelp();
 void printLine(size_t length);
 void printStep(const Grid &grid, const std::string &label, int value,
-               float sleepTime = 0);
+               float sleepTime=0);
 
 // MPI utility functions
 void mpiBroadcastSimInfo(SimParams &params);

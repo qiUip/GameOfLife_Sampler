@@ -152,7 +152,7 @@ static std::vector<std::pair<size_t, size_t>> getRowRanges(int numRanks,
   size_t startRow = 0;
   for (int rank = 0; rank < numRanks; ++rank) {
     unsigned int currentRangeSize =
-        rangeSize + (rank >= numRanks - extraRows ? 1 : 0);
+        rangeSize + (static_cast<unsigned int>(rank) >= static_cast<unsigned int>(numRanks) - extraRows ? 1 : 0);
     size_t endRow = startRow + currentRangeSize - 1;
     endRow = std::min(endRow, totalRows - 1);
     ranges.emplace_back(startRow, endRow);
@@ -169,7 +169,7 @@ void mpiSendNewGrid(const Grid &grid, int rank) {
   MPI_Send(&gridRows, 1, MPI_UNSIGNED_LONG, rank, 0, MPI_COMM_WORLD);
   MPI_Send(&gridColumns, 1, MPI_UNSIGNED_LONG, rank, 0, MPI_COMM_WORLD);
   size_t totalCells = gridRows * gridColumns;
-  MPI_Send(grid.getCellsPointer(), totalCells, MPI_CXX_BOOL, rank, 0,
+  MPI_Send(grid.getCellsPointer(), totalCells, MPI_UINT8_T, rank, 0,
            MPI_COMM_WORLD);
 }
 
@@ -181,7 +181,7 @@ void mpiReceiveNewGrid(Grid &grid, int rank) {
            MPI_STATUS_IGNORE);
   size_t totalCells = gridRows * gridColumns;
   grid = Grid(gridRows, gridColumns);
-  MPI_Recv(grid.getCellsPointer(), totalCells, MPI_CXX_BOOL, rank, 0,
+  MPI_Recv(grid.getCellsPointer(), totalCells, MPI_UINT8_T, rank, 0,
            MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 }
 
@@ -214,19 +214,19 @@ void exchangeBoundaryRows(GameOfLife &game, size_t gridRows, size_t gridColumns,
   MPI_Status recvStatus[2];
 
   if (mpiRank > 0) {
-    MPI_Isend(game.getRowPointer(1), gridColumns, MPI_CXX_BOOL, mpiRank - 1, 0,
+    MPI_Isend(game.getRowPointer(1), gridColumns, MPI_UINT8_T, mpiRank - 1, 0,
               MPI_COMM_WORLD, &sendRequest[0]);
   }
   if (mpiRank < mpiSize - 1) {
-    MPI_Isend(game.getRowPointer(gridRows - 2), gridColumns, MPI_CXX_BOOL,
+    MPI_Isend(game.getRowPointer(gridRows - 2), gridColumns, MPI_UINT8_T,
               mpiRank + 1, 1, MPI_COMM_WORLD, &sendRequest[1]);
   }
   if (mpiRank > 0) {
-    MPI_Recv(game.getRowPointer(0), gridColumns, MPI_CXX_BOOL, mpiRank - 1, 1,
+    MPI_Recv(game.getRowPointer(0), gridColumns, MPI_UINT8_T, mpiRank - 1, 1,
              MPI_COMM_WORLD, &recvStatus[0]);
   }
   if (mpiRank < mpiSize - 1) {
-    MPI_Recv(game.getRowPointer(gridRows - 1), gridColumns, MPI_CXX_BOOL,
+    MPI_Recv(game.getRowPointer(gridRows - 1), gridColumns, MPI_UINT8_T,
              mpiRank + 1, 0, MPI_COMM_WORLD, &recvStatus[1]);
   }
 }
@@ -235,7 +235,7 @@ void assembleGridSend(const Grid &grid, size_t gridRows, size_t gridColumns,
                       int mpiRank, int mpiSize) {
   size_t numRowsToSend = (mpiRank == mpiSize - 1) ? gridRows - 1 : gridRows - 2;
   for (size_t row = 1; row <= numRowsToSend; ++row) {
-    MPI_Send(grid.getRowPointer(row), gridColumns, MPI_CXX_BOOL, 0, row - 1,
+    MPI_Send(grid.getRowPointer(row), gridColumns, MPI_UINT8_T, 0, row - 1,
              MPI_COMM_WORLD);
   }
 }
@@ -255,7 +255,7 @@ Grid assembleGrid(const Grid &grid, size_t gridRows, size_t gridColumns,
         ((rank == mpiSize - 1) ? startRow - 1 : startRow);
     for (size_t row = 0; row < rowsToReceive; ++row) {
       MPI_Recv(assembledGrid.getRowPointer(startRow + row), gridColumns,
-               MPI_CXX_BOOL, rank, row, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+               MPI_UINT8_T, rank, row, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     }
   }
   return assembledGrid;

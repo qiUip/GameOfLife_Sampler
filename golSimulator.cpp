@@ -22,19 +22,39 @@ int main(int argc, char **argv) {
       MPI_Finalize();
       return EXIT_FAILURE;
     }
-    printStep(grid, "Generation:", 0);
+    if (params.sleepTime >= 0) printStep(grid, "Generation:", 0);
   }
 
-  // Broadcast simulation parameters to all ranks
+  // ── Single-rank path: pure OpenMP, no MPI communication ─────────────────
+  if (mpiSize == 1) {
+    omp_set_num_threads(params.numThreads);
+    GameOfLife game(grid);
+    auto t_start = std::chrono::high_resolution_clock::now();
+
+    for (unsigned int step = 0; step < params.steps; ++step) {
+      game.takeStep();
+      if (params.sleepTime > 0 && step < params.steps - 1)
+        printStep(game.getGrid(), "Generation:", step + 1, params.sleepTime);
+    }
+
+    double elapsed = std::chrono::duration<double>(
+        std::chrono::high_resolution_clock::now() - t_start).count();
+    if (params.sleepTime >= 0) printStep(game.getGrid(), "Generation:", params.steps);
+    if (!params.outfile.empty())
+      game.getGrid().writeToFile(params.outfile);
+    std::cout << "Simulation completed in " << elapsed << " seconds\n";
+    MPI_Finalize();
+    return EXIT_SUCCESS;
+  }
+
+  // ── Multi-rank path: MPI domain decomposition + OpenMP ───────────────────
   mpiBroadcastSimInfo(params);
   MPI_Barrier(MPI_COMM_WORLD);
 
-  // Distribute grid using domain decomposition
-  if (mpiRank == 0) {
+  if (mpiRank == 0)
     mpiSplitGrid(grid, mpiSize);
-  } else {
+  else
     mpiReceiveNewGrid(grid, 0);
-  }
 
   omp_set_num_threads(params.numThreads);
 
@@ -43,19 +63,16 @@ int main(int argc, char **argv) {
 
   GameOfLife game(grid);
 
-  // Start timing
   auto t_start = std::chrono::high_resolution_clock::now();
 
-  // Main simulation loop
   for (unsigned int step = 0; step < params.steps; ++step) {
     game.takeStep();
     exchangeBoundaryRows(game, gridRows, gridColumns, mpiRank, mpiSize);
 
-    // Print intermediate steps if animation enabled
     if (params.sleepTime > 0 && step < params.steps - 1) {
-      if (mpiRank != 0) {
+      if (mpiRank != 0)
         assembleGridSend(game.getGrid(), gridRows, gridColumns, mpiRank, mpiSize);
-      } else {
+      else {
         Grid assembled = assembleGrid(game.getGrid(), gridRows, gridColumns,
                                       params.fullGridRows, params.fullGridColumns,
                                       mpiRank, mpiSize);
@@ -64,22 +81,18 @@ int main(int argc, char **argv) {
     }
   }
 
-  // End timing
-  auto t_end = std::chrono::high_resolution_clock::now();
-  double elapsed = std::chrono::duration<double>(t_end - t_start).count();
+  double elapsed = std::chrono::duration<double>(
+      std::chrono::high_resolution_clock::now() - t_start).count();
 
-  // Assemble final result at rank 0
   if (mpiRank != 0) {
     assembleGridSend(game.getGrid(), gridRows, gridColumns, mpiRank, mpiSize);
   } else {
     grid = assembleGrid(game.getGrid(), gridRows, gridColumns,
                         params.fullGridRows, params.fullGridColumns,
                         mpiRank, mpiSize);
-    printStep(grid, "Generation:", params.steps);
-
-    if (!params.outfile.empty()) {
+    if (params.sleepTime >= 0) printStep(grid, "Generation:", params.steps);
+    if (!params.outfile.empty())
       grid.writeToFile(params.outfile);
-    }
     std::cout << "Simulation completed in " << elapsed << " seconds\n";
   }
 

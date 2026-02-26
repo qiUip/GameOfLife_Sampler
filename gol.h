@@ -1,6 +1,7 @@
 #ifndef GOL_H
 #define GOL_H
 
+#include <cstdint>
 #include <random>
 #include <string>
 
@@ -21,17 +22,16 @@ public:
   bool getCell(size_t row, size_t column) const;
   void setCell(size_t row, size_t column, bool cellStatus);
   void swap(Grid &other);
-  bool *getRowPointer(size_t row) const;
-  void setRow(size_t row, const bool *rowCells);
-  bool *getCellsPointer() const;
-  size_t aliveNeighbours(size_t row, size_t column) const;
+  uint8_t *getRowPointer(size_t row) const;
+  void setRow(size_t row, const uint8_t *rowCells);
+  uint8_t *getCellsPointer() const;
   size_t aliveCells() const;
   void printGrid() const;
   void writeToFile(const std::string &filename) const;
 
 private:
   size_t gridRows_, gridColumns_;
-  bool *cells_;
+  uint8_t *cells_;
 };
 
 class GameOfLife {
@@ -39,7 +39,7 @@ public:
   explicit GameOfLife(Grid &grid);
   void takeStep();
   const Grid &getGrid() const;
-  bool *getRowPointer(size_t row);
+  uint8_t *getRowPointer(size_t row);
 
 private:
   Grid currentGrid_;
