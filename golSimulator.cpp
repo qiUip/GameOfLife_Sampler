@@ -28,7 +28,8 @@ int main(int argc, char **argv) {
   // ── Single-rank path: pure OpenMP, no MPI communication ─────────────────
   if (mpiSize == 1) {
     omp_set_num_threads(params.numThreads);
-    GameOfLife game(grid);
+    //GameOfLife game(grid);
+    BitGameOfLife game(grid);
     auto t_start = std::chrono::high_resolution_clock::now();
 
     for (unsigned int step = 0; step < params.steps; ++step) {
@@ -39,9 +40,13 @@ int main(int argc, char **argv) {
 
     double elapsed = std::chrono::duration<double>(
         std::chrono::high_resolution_clock::now() - t_start).count();
-    if (params.sleepTime >= 0) printStep(game.getGrid(), "Generation:", params.steps);
+    const Grid finalGrid = game.getGrid();
+    if (params.sleepTime >= 0) printStep(finalGrid, "Generation:", params.steps);
     if (!params.outfile.empty())
-      game.getGrid().writeToFile(params.outfile);
+      finalGrid.writeToFile(params.outfile);
+    //if (params.sleepTime >= 0) printStep(game.getGrid(), "Generation:", params.steps);
+    //if (!params.outfile.empty())
+    //  game.getGrid().writeToFile(params.outfile);
     std::cout << "Simulation completed in " << elapsed << " seconds\n";
     MPI_Finalize();
     return EXIT_SUCCESS;
