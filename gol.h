@@ -67,6 +67,9 @@ public:
 
   uint64_t       *getWords()       { return words_; }
   const uint64_t *getWords() const { return words_; }
+  uint64_t       *getRowWords(size_t row)       { return words_ + row * wordsPerRow_; }
+  const uint64_t *getRowWords(size_t row) const { return words_ + row * wordsPerRow_; }
+  void setRowWords(size_t row, const uint64_t *src);
 
   void   swap(BitGrid &other);
   size_t aliveCells() const;
@@ -80,8 +83,11 @@ private:
 class BitGameOfLife {
 public:
   explicit BitGameOfLife(Grid &grid);
+  explicit BitGameOfLife(BitGrid &grid);
   void takeStep();
-  Grid getGrid() const;   // converts BitGrid → Grid on demand
+  Grid getGrid() const;           // converts BitGrid → Grid on demand
+  const BitGrid &getBitGrid() const;
+  uint64_t *getRowWords(size_t row);
 
 private:
   BitGrid current_, next_;

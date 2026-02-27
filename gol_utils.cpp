@@ -260,3 +260,104 @@ Grid assembleGrid(const Grid &grid, size_t gridRows, size_t gridColumns,
   }
   return assembledGrid;
 }
+
+// ── BitGrid MPI utility functions (uint64_t bit-packed versions) ─────────────
+
+void mpiSendBitGrid(const BitGrid &grid, int rank) {
+  size_t rows = grid.getNumRows();
+  size_t cols = grid.getNumCols();
+  MPI_Send(&rows, 1, MPI_UNSIGNED_LONG, rank, 0, MPI_COMM_WORLD);
+  MPI_Send(&cols, 1, MPI_UNSIGNED_LONG, rank, 0, MPI_COMM_WORLD);
+  size_t totalWords = rows * grid.getWordsPerRow();
+  MPI_Send(grid.getWords(), totalWords, MPI_UINT64_T, rank, 0,
+           MPI_COMM_WORLD);
+}
+
+void mpiReceiveBitGrid(BitGrid &grid, int rank) {
+  size_t rows, cols;
+  MPI_Recv(&rows, 1, MPI_UNSIGNED_LONG, 0, 0, MPI_COMM_WORLD,
+           MPI_STATUS_IGNORE);
+  MPI_Recv(&cols, 1, MPI_UNSIGNED_LONG, 0, 0, MPI_COMM_WORLD,
+           MPI_STATUS_IGNORE);
+  grid = BitGrid(rows, cols);
+  size_t totalWords = rows * grid.getWordsPerRow();
+  MPI_Recv(grid.getWords(), totalWords, MPI_UINT64_T, rank, 0,
+           MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+}
+
+void mpiSplitBitGrid(BitGrid &localGrid, const Grid &fullGrid, int mpiSize) {
+  size_t gridRows = fullGrid.getNumRows();
+  size_t gridColumns = fullGrid.getNumColumns();
+  const auto rowRanges = getRowRanges(mpiSize, gridRows);
+
+  // Convert full grid to bit-packed once
+  BitGrid fullBitGrid(fullGrid);
+
+  for (int rank = 0; rank < mpiSize; ++rank) {
+    size_t startRow = rowRanges[rank].first;
+    size_t endRow = rowRanges[rank].second;
+    size_t localRows = endRow - startRow + 1;
+
+    BitGrid chunk(localRows, gridColumns);
+    for (size_t row = 0; row < localRows; ++row) {
+      chunk.setRowWords(row, fullBitGrid.getRowWords(startRow + row));
+    }
+    if (rank == 0) {
+      localGrid = std::move(chunk);
+    } else {
+      mpiSendBitGrid(chunk, rank);
+    }
+  }
+}
+
+void exchangeBitBoundaryRows(BitGameOfLife &game, size_t gridRows,
+                             size_t wordsPerRow, int mpiRank, int mpiSize) {
+  MPI_Request sendRequest[2];
+
+  if (mpiRank > 0) {
+    MPI_Isend(game.getRowWords(1), wordsPerRow, MPI_UINT64_T, mpiRank - 1, 0,
+              MPI_COMM_WORLD, &sendRequest[0]);
+  }
+  if (mpiRank < mpiSize - 1) {
+    MPI_Isend(game.getRowWords(gridRows - 2), wordsPerRow, MPI_UINT64_T,
+              mpiRank + 1, 1, MPI_COMM_WORLD, &sendRequest[1]);
+  }
+  if (mpiRank > 0) {
+    MPI_Recv(game.getRowWords(0), wordsPerRow, MPI_UINT64_T, mpiRank - 1, 1,
+             MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+  }
+  if (mpiRank < mpiSize - 1) {
+    MPI_Recv(game.getRowWords(gridRows - 1), wordsPerRow, MPI_UINT64_T,
+             mpiRank + 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+  }
+}
+
+void assembleBitGridSend(const BitGrid &grid, size_t gridRows,
+                         size_t wordsPerRow, int mpiRank, int mpiSize) {
+  size_t numRowsToSend = (mpiRank == mpiSize - 1) ? gridRows - 1 : gridRows - 2;
+  for (size_t row = 1; row <= numRowsToSend; ++row) {
+    MPI_Send(grid.getRowWords(row), wordsPerRow, MPI_UINT64_T, 0, row - 1,
+             MPI_COMM_WORLD);
+  }
+}
+
+BitGrid assembleBitGrid(const BitGrid &grid, size_t gridRows,
+                        size_t wordsPerRow, size_t fullGridRows,
+                        size_t fullGridColumns, int mpiRank, int mpiSize) {
+  BitGrid assembled(fullGridRows, fullGridColumns);
+  for (size_t row = 0; row < gridRows - 1; ++row) {
+    assembled.setRowWords(row, grid.getRowWords(row));
+  }
+  const auto rowRanges = getRowRanges(mpiSize, fullGridRows);
+  for (int rank = 1; rank < mpiSize; ++rank) {
+    size_t startRow = rowRanges[rank].first + 1;
+    size_t rowsToReceive =
+        rowRanges[rank].second -
+        ((rank == mpiSize - 1) ? startRow - 1 : startRow);
+    for (size_t row = 0; row < rowsToReceive; ++row) {
+      MPI_Recv(assembled.getRowWords(startRow + row), wordsPerRow,
+               MPI_UINT64_T, rank, row, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    }
+  }
+  return assembled;
+}

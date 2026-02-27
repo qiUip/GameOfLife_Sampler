@@ -39,4 +39,16 @@ Grid assembleGrid(const Grid &grid, size_t gridRows, size_t gridColumns,
                   size_t fullGridRows, size_t fullGridColumns, int mpiRank,
                   int mpiSize);
 
+// BitGrid MPI utility functions (uint64_t bit-packed versions)
+void mpiSendBitGrid(const BitGrid &grid, int rank);
+void mpiReceiveBitGrid(BitGrid &grid, int rank);
+void mpiSplitBitGrid(BitGrid &localGrid, const Grid &fullGrid, int mpiSize);
+void exchangeBitBoundaryRows(BitGameOfLife &game, size_t gridRows,
+                             size_t wordsPerRow, int mpiRank, int mpiSize);
+void assembleBitGridSend(const BitGrid &grid, size_t gridRows,
+                         size_t wordsPerRow, int mpiRank, int mpiSize);
+BitGrid assembleBitGrid(const BitGrid &grid, size_t gridRows,
+                        size_t wordsPerRow, size_t fullGridRows,
+                        size_t fullGridColumns, int mpiRank, int mpiSize);
+
 #endif // GOL_UTILS_H

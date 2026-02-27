@@ -56,32 +56,35 @@ int main(int argc, char **argv) {
   mpiBroadcastSimInfo(params);
   MPI_Barrier(MPI_COMM_WORLD);
 
+  BitGrid localBitGrid;
   if (mpiRank == 0)
-    mpiSplitGrid(grid, mpiSize);
+    mpiSplitBitGrid(localBitGrid, grid, mpiSize);
   else
-    mpiReceiveNewGrid(grid, 0);
+    mpiReceiveBitGrid(localBitGrid, 0);
 
   omp_set_num_threads(params.numThreads);
 
-  const auto gridRows = grid.getNumRows();
-  const auto gridColumns = grid.getNumColumns();
+  const auto gridRows = localBitGrid.getNumRows();
+  const auto wordsPerRow = localBitGrid.getWordsPerRow();
 
-  GameOfLife game(grid);
+  BitGameOfLife game(localBitGrid);
 
   auto t_start = std::chrono::high_resolution_clock::now();
 
   for (unsigned int step = 0; step < params.steps; ++step) {
     game.takeStep();
-    exchangeBoundaryRows(game, gridRows, gridColumns, mpiRank, mpiSize);
+    exchangeBitBoundaryRows(game, gridRows, wordsPerRow, mpiRank, mpiSize);
 
     if (params.sleepTime > 0 && step < params.steps - 1) {
-      if (mpiRank != 0)
-        assembleGridSend(game.getGrid(), gridRows, gridColumns, mpiRank, mpiSize);
-      else {
-        Grid assembled = assembleGrid(game.getGrid(), gridRows, gridColumns,
-                                      params.fullGridRows, params.fullGridColumns,
-                                      mpiRank, mpiSize);
-        printStep(assembled, "Generation:", step + 1, params.sleepTime);
+      if (mpiRank != 0) {
+        assembleBitGridSend(game.getBitGrid(), gridRows, wordsPerRow,
+                            mpiRank, mpiSize);
+      } else {
+        BitGrid assembled = assembleBitGrid(game.getBitGrid(), gridRows,
+                                            wordsPerRow, params.fullGridRows,
+                                            params.fullGridColumns,
+                                            mpiRank, mpiSize);
+        printStep(assembled.toGrid(), "Generation:", step + 1, params.sleepTime);
       }
     }
   }
@@ -90,14 +93,17 @@ int main(int argc, char **argv) {
       std::chrono::high_resolution_clock::now() - t_start).count();
 
   if (mpiRank != 0) {
-    assembleGridSend(game.getGrid(), gridRows, gridColumns, mpiRank, mpiSize);
-  } else {
-    grid = assembleGrid(game.getGrid(), gridRows, gridColumns,
-                        params.fullGridRows, params.fullGridColumns,
+    assembleBitGridSend(game.getBitGrid(), gridRows, wordsPerRow,
                         mpiRank, mpiSize);
-    if (params.sleepTime >= 0) printStep(grid, "Generation:", params.steps);
+  } else {
+    BitGrid finalBitGrid = assembleBitGrid(game.getBitGrid(), gridRows,
+                                           wordsPerRow, params.fullGridRows,
+                                           params.fullGridColumns,
+                                           mpiRank, mpiSize);
+    Grid finalGrid = finalBitGrid.toGrid();
+    if (params.sleepTime >= 0) printStep(finalGrid, "Generation:", params.steps);
     if (!params.outfile.empty())
-      grid.writeToFile(params.outfile);
+      finalGrid.writeToFile(params.outfile);
     std::cout << "Simulation completed in " << elapsed << " seconds\n";
   }
 

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -530,6 +531,10 @@ BitGrid::~BitGrid() { delete[] words_; }
 
 void BitGrid::swap(BitGrid &other) { std::swap(words_, other.words_); }
 
+void BitGrid::setRowWords(size_t row, const uint64_t *src) {
+  std::memcpy(words_ + row * wordsPerRow_, src, wordsPerRow_ * sizeof(uint64_t));
+}
+
 size_t BitGrid::aliveCells() const {
   size_t count = 0;
   for (size_t i = 0; i < rows_ * wordsPerRow_; ++i)
@@ -607,3 +612,16 @@ void BitGameOfLife::takeStep() {
 }
 
 Grid BitGameOfLife::getGrid() const { return current_.toGrid(); }
+
+const BitGrid &BitGameOfLife::getBitGrid() const { return current_; }
+
+uint64_t *BitGameOfLife::getRowWords(size_t row) {
+  return current_.getRowWords(row);
+}
+
+BitGameOfLife::BitGameOfLife(BitGrid &grid)
+    : current_(std::move(grid)),
+      next_(current_.getNumRows(), current_.getNumCols()),
+      rows_(current_.getNumRows()),
+      cols_(current_.getNumCols()),
+      wordsPerRow_(current_.getWordsPerRow()) {}
