@@ -1,5 +1,6 @@
 #include <chrono>
 #include <iostream>
+#include <memory>
 #include <mpi.h>
 #include <omp.h>
 
@@ -7,13 +8,11 @@
 #include "gol_utils.h"
 
 int main(int argc, char **argv) {
-  // Initialize MPI
   int mpiRank, mpiSize;
   MPI_Init(&argc, &argv);
   MPI_Comm_rank(MPI_COMM_WORLD, &mpiRank);
   MPI_Comm_size(MPI_COMM_WORLD, &mpiSize);
 
-  // Parse CLI and create initial grid (rank 0 only)
   Grid grid;
   SimParams params;
 
@@ -25,66 +24,63 @@ int main(int argc, char **argv) {
     if (params.sleepTime >= 0) printStep(grid, "Generation:", 0);
   }
 
+  if (mpiSize > 1) {
+    mpiBroadcastSimInfo(params);
+    MPI_Barrier(MPI_COMM_WORLD);
+  }
+
+  omp_set_num_threads(params.numThreads);
+
+  // Build local BitGrid — split across ranks if multi-rank
+  BitGrid localBitGrid;
+  if (mpiSize > 1) {
+    if (mpiRank == 0) {
+      BitGrid fullBitGrid(grid);
+      mpiSplitGrid(localBitGrid, fullBitGrid, mpiSize);
+    } else {
+      mpiReceiveGrid(localBitGrid, 0);
+    }
+  } else {
+    localBitGrid = BitGrid(grid);
+  }
+
+  auto game = std::make_unique<BitPackGameOfLife>(localBitGrid);
+
   // ── Single-rank path: pure OpenMP, no MPI communication ─────────────────
   if (mpiSize == 1) {
-    omp_set_num_threads(params.numThreads);
-    //GameOfLife game(grid);
-    BitGameOfLife game(grid);
     auto t_start = std::chrono::high_resolution_clock::now();
 
     for (unsigned int step = 0; step < params.steps; ++step) {
-      game.takeStep();
+      game->takeStep();
       if (params.sleepTime > 0 && step < params.steps - 1)
-        printStep(game.getGrid(), "Generation:", step + 1, params.sleepTime);
+        printStep(game->getGrid(), "Generation:", step + 1, params.sleepTime);
     }
 
     double elapsed = std::chrono::duration<double>(
         std::chrono::high_resolution_clock::now() - t_start).count();
-    const Grid finalGrid = game.getGrid();
+    const Grid finalGrid = game->getGrid();
     if (params.sleepTime >= 0) printStep(finalGrid, "Generation:", params.steps);
     if (!params.outfile.empty())
       finalGrid.writeToFile(params.outfile);
-    //if (params.sleepTime >= 0) printStep(game.getGrid(), "Generation:", params.steps);
-    //if (!params.outfile.empty())
-    //  game.getGrid().writeToFile(params.outfile);
-    std::cout << "Simulation completed in " << elapsed << " seconds\n";
+    std::cout << "Game completed in " << elapsed << " seconds\n";
     MPI_Finalize();
     return EXIT_SUCCESS;
   }
 
   // ── Multi-rank path: MPI domain decomposition + OpenMP ───────────────────
-  mpiBroadcastSimInfo(params);
-  MPI_Barrier(MPI_COMM_WORLD);
-
-  BitGrid localBitGrid;
-  if (mpiRank == 0)
-    mpiSplitBitGrid(localBitGrid, grid, mpiSize);
-  else
-    mpiReceiveBitGrid(localBitGrid, 0);
-
-  omp_set_num_threads(params.numThreads);
-
-  const auto gridRows = localBitGrid.getNumRows();
-  const auto wordsPerRow = localBitGrid.getWordsPerRow();
-
-  BitGameOfLife game(localBitGrid);
-
   auto t_start = std::chrono::high_resolution_clock::now();
 
   for (unsigned int step = 0; step < params.steps; ++step) {
-    game.takeStep();
-    exchangeBitBoundaryRows(game, gridRows, wordsPerRow, mpiRank, mpiSize);
+    game->takeStep();
+    exchangeBoundaryRows(*game, mpiRank, mpiSize);
 
     if (params.sleepTime > 0 && step < params.steps - 1) {
       if (mpiRank != 0) {
-        assembleBitGridSend(game.getBitGrid(), gridRows, wordsPerRow,
-                            mpiRank, mpiSize);
+        assembleSend(*game, mpiRank, mpiSize);
       } else {
-        BitGrid assembled = assembleBitGrid(game.getBitGrid(), gridRows,
-                                            wordsPerRow, params.fullGridRows,
-                                            params.fullGridColumns,
-                                            mpiRank, mpiSize);
-        printStep(assembled.toGrid(), "Generation:", step + 1, params.sleepTime);
+        Grid fullGrid = assembleFullGrid(*game, params.fullGridRows,
+                                         params.fullGridColumns, mpiSize);
+        printStep(fullGrid, "Generation:", step + 1, params.sleepTime);
       }
     }
   }
@@ -93,18 +89,14 @@ int main(int argc, char **argv) {
       std::chrono::high_resolution_clock::now() - t_start).count();
 
   if (mpiRank != 0) {
-    assembleBitGridSend(game.getBitGrid(), gridRows, wordsPerRow,
-                        mpiRank, mpiSize);
+    assembleSend(*game, mpiRank, mpiSize);
   } else {
-    BitGrid finalBitGrid = assembleBitGrid(game.getBitGrid(), gridRows,
-                                           wordsPerRow, params.fullGridRows,
-                                           params.fullGridColumns,
-                                           mpiRank, mpiSize);
-    Grid finalGrid = finalBitGrid.toGrid();
+    Grid finalGrid = assembleFullGrid(*game, params.fullGridRows,
+                                      params.fullGridColumns, mpiSize);
     if (params.sleepTime >= 0) printStep(finalGrid, "Generation:", params.steps);
     if (!params.outfile.empty())
       finalGrid.writeToFile(params.outfile);
-    std::cout << "Simulation completed in " << elapsed << " seconds\n";
+    std::cout << "Game completed in " << elapsed << " seconds\n";
   }
 
   MPI_Finalize();

@@ -2,96 +2,149 @@
 #define GOL_H
 
 #include <cstdint>
+#include <cstring>
 #include <random>
 #include <string>
 
-class Grid {
+// ── Common grid storage ─────────────────────────────────────────────────────
+
+template<typename T>
+class GridStorage {
 public:
-  Grid();
-  Grid(size_t gridRows, size_t gridColumns);
-  Grid(size_t gridRows, size_t gridColumns, unsigned int alive,
-       std::mt19937 &rng);
+  using CellType = T;
+
+  GridStorage() : rows_(0), cols_(0), data_(nullptr) {}
+
+  GridStorage(size_t rows, size_t cols, size_t stride)
+      : rows_(rows), cols_(cols),
+        data_(new T[rows * stride]()) {}
+
+  GridStorage(GridStorage &&other) noexcept
+      : rows_(other.rows_), cols_(other.cols_), data_(other.data_) {
+    other.rows_ = other.cols_ = 0;
+    other.data_ = nullptr;
+  }
+
+  GridStorage &operator=(GridStorage &&other) noexcept {
+    if (this != &other) {
+      delete[] data_;
+      rows_ = other.rows_; cols_ = other.cols_;
+      data_ = other.data_;
+      other.rows_ = other.cols_ = 0;
+      other.data_ = nullptr;
+    }
+    return *this;
+  }
+
+  virtual ~GridStorage() { delete[] data_; }
+
+  size_t getNumRows() const { return rows_; }
+  size_t getNumCols() const { return cols_; }
+  virtual size_t getStride() const = 0;
+
+  T       *getData()       { return data_; }
+  const T *getData() const { return data_; }
+  T       *getRowData(size_t row)       { return data_ + row * getStride(); }
+  const T *getRowData(size_t row) const { return data_ + row * getStride(); }
+
+  void setRow(size_t row, const T *src) {
+    size_t s = getStride();
+    std::memcpy(data_ + row * s, src, s * sizeof(T));
+  }
+
+  void swap(GridStorage &other) {
+    T *tmp = data_; data_ = other.data_; other.data_ = tmp;
+  }
+
+protected:
+  size_t rows_, cols_;
+  T *data_;
+};
+
+// ── Byte grid (1 byte per cell) ─────────────────────────────────────────────
+
+class Grid : public GridStorage<uint8_t> {
+public:
+  Grid() = default;
+  Grid(size_t rows, size_t cols);
+  Grid(size_t rows, size_t cols, unsigned int alive, std::mt19937 &rng);
   Grid(const std::string &filename);
 
-  Grid(Grid &&other) noexcept;
-  Grid &operator=(Grid &&other) noexcept;
-  ~Grid();
+  size_t getStride() const override { return cols_; }
 
-  size_t getNumRows() const;
-  size_t getNumColumns() const;
   bool getCell(size_t row, size_t column) const;
   void setCell(size_t row, size_t column, bool cellStatus);
-  void swap(Grid &other);
-  uint8_t *getRowPointer(size_t row) const;
-  void setRow(size_t row, const uint8_t *rowCells);
-  uint8_t *getCellsPointer() const;
   size_t aliveCells() const;
   void printGrid() const;
   void writeToFile(const std::string &filename) const;
-
-private:
-  size_t gridRows_, gridColumns_;
-  uint8_t *cells_;
 };
 
-class GameOfLife {
+// ── Bit-packed grid (1 bit per cell, 64 cells per uint64_t) ─────────────────
+
+class BitGrid : public GridStorage<uint64_t> {
 public:
-  explicit GameOfLife(Grid &grid);
-  void takeStep();
-  const Grid &getGrid() const;
-  uint8_t *getRowPointer(size_t row);
+  BitGrid() = default;
+  BitGrid(size_t rows, size_t cols);
+  explicit BitGrid(const Grid &g);
+  Grid toGrid() const;
+
+  size_t getStride() const override { return (cols_ + 63) / 64; }
+
+  size_t aliveCells() const;
+};
+
+// ── Virtual base class for Game of Life engines ──────────────────────────────
+
+enum class CellKind { Byte, BitPacked };
+
+class GameOfLifeBase {
+public:
+  virtual ~GameOfLifeBase() = default;
+  virtual void takeStep() = 0;
+  virtual Grid getGrid() const = 0;
+
+  size_t getNumRows() const { return rows_; }
+  size_t getNumCols() const { return cols_; }
+
+  virtual void  *getRowDataRaw(size_t row) = 0;
+  virtual size_t getStride() const = 0;
+  virtual CellKind getCellKind() const = 0;
+
+protected:
+  size_t rows_, cols_;
+};
+
+// ── Byte/SIMD engine ─────────────────────────────────────────────────────────
+
+class SIMDGameOfLife : public GameOfLifeBase {
+public:
+  explicit SIMDGameOfLife(Grid &grid);
+  void takeStep() override;
+  Grid getGrid() const override;
+  void  *getRowDataRaw(size_t row) override;
+  size_t getStride() const override;
+  CellKind getCellKind() const override;
 
 private:
   Grid currentGrid_;
   Grid newGrid_;
-  size_t gridRows_;
-  size_t gridColumns_;
-  size_t totalCells_;
 };
 
-// ── Bit-packed grid: 1 bit per cell, 64 cells per uint64_t word ─────────────
-class BitGrid {
+// ── Bit-packed engine ────────────────────────────────────────────────────────
+
+class BitPackGameOfLife : public GameOfLifeBase {
 public:
-  BitGrid();
-  BitGrid(size_t rows, size_t cols);
-  explicit BitGrid(const Grid &g);   // convert from byte grid
-  Grid toGrid() const;               // convert back to byte grid
-
-  BitGrid(BitGrid &&other) noexcept;
-  BitGrid &operator=(BitGrid &&other) noexcept;
-  ~BitGrid();
-
-  size_t getNumRows() const { return rows_; }
-  size_t getNumCols() const { return cols_; }
-  size_t getWordsPerRow() const { return wordsPerRow_; }
-
-  uint64_t       *getWords()       { return words_; }
-  const uint64_t *getWords() const { return words_; }
-  uint64_t       *getRowWords(size_t row)       { return words_ + row * wordsPerRow_; }
-  const uint64_t *getRowWords(size_t row) const { return words_ + row * wordsPerRow_; }
-  void setRowWords(size_t row, const uint64_t *src);
-
-  void   swap(BitGrid &other);
-  size_t aliveCells() const;
-
-private:
-  size_t   rows_, cols_, wordsPerRow_;
-  uint64_t *words_;
-};
-
-// ── Bit-parallel Game of Life ────────────────────────────────────────────────
-class BitGameOfLife {
-public:
-  explicit BitGameOfLife(Grid &grid);
-  explicit BitGameOfLife(BitGrid &grid);
-  void takeStep();
-  Grid getGrid() const;           // converts BitGrid → Grid on demand
-  const BitGrid &getBitGrid() const;
-  uint64_t *getRowWords(size_t row);
+  explicit BitPackGameOfLife(Grid &grid);
+  explicit BitPackGameOfLife(BitGrid &grid);
+  void takeStep() override;
+  Grid getGrid() const override;
+  void  *getRowDataRaw(size_t row) override;
+  size_t getStride() const override;
+  CellKind getCellKind() const override;
 
 private:
   BitGrid current_, next_;
-  size_t  rows_, cols_, wordsPerRow_;
+  size_t wordsPerRow_;
 };
 
 #endif // GOL_H
