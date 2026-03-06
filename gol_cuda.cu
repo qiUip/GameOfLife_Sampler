@@ -169,7 +169,6 @@ __global__ void golKernel(const uint8_t *src, uint8_t *dst,
   if (row < rows && baseCol + 3 < cols) {
     // Vectorised path: all 4 cells valid
     uint32_t result = 0;
-    #pragma unroll
     for (int k = 0; k < 4; k++) {
       unsigned int cx = tx + k;
       unsigned int nb = tile[(ty-1)*tileW + cx-1] + tile[(ty-1)*tileW + cx] + tile[(ty-1)*tileW + cx+1]
