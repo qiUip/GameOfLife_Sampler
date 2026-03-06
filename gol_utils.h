@@ -5,12 +5,15 @@
 #include <string>
 #include <vector>
 
+enum Engine : int { ENGINE_SIMD = 0, ENGINE_BITPACK, ENGINE_CUDA, ENGINE_CUDA_BITPACK, ENGINE_SIMPLE };
+
 struct SimParams {
   unsigned int steps = 1;
   unsigned int seed = 0;
   float sleepTime = 0;
   std::string outfile;
   int numThreads = 1;
+  int engine = ENGINE_SIMD;
   size_t fullGridRows = 0;
   size_t fullGridColumns = 0;
 };

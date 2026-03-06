@@ -8,10 +8,10 @@
 #  include <simd>
 #  define GOL_USE_SIMD_LIB 1
    namespace { using std::simd_flag_default; using std::simd_select; }
-#elif defined(__GNUC__) && !defined(__clang__) && __has_include(<experimental/simd>)
+#elif __cplusplus > 202302L && defined(__GNUC__) && !defined(__clang__) && __has_include(<experimental/simd>)
 #  include <experimental/simd>
 #  define GOL_USE_SIMD_LIB 1
-   namespace std { using namespace std::experimental; } // pull native_simd etc. into std::
+   namespace std { using namespace std::experimental; }
    namespace {
      constexpr auto simd_flag_default = std::experimental::element_aligned;
      template<class M, class V>
@@ -19,7 +19,6 @@
        V r = b; std::experimental::where(mask, r) = a; return r;
      }
    }
-
 #elif defined(__ARM_NEON__) || defined(__ARM_NEON)
 #  include <arm_neon.h>
 #elif defined(__AVX512BW__) || defined(__AVX2__)

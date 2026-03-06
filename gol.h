@@ -119,9 +119,26 @@ public:
   virtual size_t getStride() const = 0;
   virtual CellKind getCellKind() const = 0;
   virtual void commitBoundaries() {}
+  virtual void sync() {}
 
 protected:
   size_t rows_, cols_;
+};
+
+// ── Simple engine (basic OpenMP, no SIMD) ────────────────────────────────────
+
+class SimpleGameOfLife : public GameOfLife{
+public:
+  explicit SimpleGameOfLife(Grid &grid);
+  void takeStep() override;
+  Grid getGrid() const override;
+  void  *getRowDataRaw(size_t row) override;
+  size_t getStride() const override;
+  CellKind getCellKind() const override;
+
+private:
+  Grid currentGrid_;
+  Grid newGrid_;
 };
 
 // ── Byte/SIMD engine ─────────────────────────────────────────────────────────
@@ -161,38 +178,43 @@ private:
 
 #if GOL_CUDA
 
-class CUDAGameOfLife : public GameOfLife {
+// Base template: owns device buffers, handles memcpy boilerplate.
+// Derived classes only override launchKernel() and getCellKind().
+template<typename CellT, typename HostGridT>
+class CUDAEngineBase : public GameOfLife {
 public:
-  explicit CUDAGameOfLife(Grid &grid);
-  ~CUDAGameOfLife();
+  ~CUDAEngineBase();
   void takeStep() override;
   Grid getGrid() const override;
   void  *getRowDataRaw(size_t row) override;
   size_t getStride() const override;
-  CellKind getCellKind() const override;
   void commitBoundaries() override;
+  void sync() override;
 
-private:
-  uint8_t *d_current_, *d_next_;
-  Grid hostGrid_;
+protected:
+  explicit CUDAEngineBase(HostGridT hostGrid);
+  virtual void launchKernel(const CellT *src, CellT *dst) = 0;
+
+  CellT *d_current_, *d_next_;
+  HostGridT hostGrid_;
+  size_t stride_;
 };
 
-class CUDABitPackGameOfLife : public GameOfLife {
+class CUDAGameOfLife : public CUDAEngineBase<uint8_t, Grid> {
+public:
+  explicit CUDAGameOfLife(Grid &grid);
+  CellKind getCellKind() const override;
+protected:
+  void launchKernel(const uint8_t *src, uint8_t *dst) override;
+};
+
+class CUDABitPackGameOfLife : public CUDAEngineBase<uint64_t, BitGrid> {
 public:
   explicit CUDABitPackGameOfLife(Grid &grid);
   explicit CUDABitPackGameOfLife(BitGrid &grid);
-  ~CUDABitPackGameOfLife();
-  void takeStep() override;
-  Grid getGrid() const override;
-  void  *getRowDataRaw(size_t row) override;
-  size_t getStride() const override;
   CellKind getCellKind() const override;
-  void commitBoundaries() override;
-
-private:
-  uint64_t *d_current_, *d_next_;
-  BitGrid hostGrid_;
-  size_t wordsPerRow_;
+protected:
+  void launchKernel(const uint64_t *src, uint64_t *dst) override;
 };
 
 #endif // GOL_CUDA

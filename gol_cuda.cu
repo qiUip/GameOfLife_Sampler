@@ -1,142 +1,216 @@
 #include "gol.h"
 
 #include <cstdio>
+#include <type_traits>
 #include <cuda_runtime.h>
 
 #define CUDA_CHECK(call)                                                       \
-  do {                                                                         \
-    cudaError_t err = (call);                                                  \
-    if (err != cudaSuccess) {                                                  \
-      fprintf(stderr, "CUDA error at %s:%d: %s\n", __FILE__, __LINE__,        \
-              cudaGetErrorString(err));                                         \
-      exit(EXIT_FAILURE);                                                      \
-    }                                                                          \
-  } while (0)
+    do                                                                         \
+    {                                                                          \
+        cudaError_t err = (call);                                              \
+        if (err != cudaSuccess)                                                \
+        {                                                                      \
+            fprintf(stderr, "CUDA error at %s:%d: %s\n", __FILE__, __LINE__,   \
+                    cudaGetErrorString(err));                                  \
+            exit(EXIT_FAILURE);                                                \
+        }                                                                      \
+    } while (0)
 
-// ── Byte-per-cell kernel ────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+// CUDAEngineBase — shared device buffer management
+// ═══════════════════════════════════════════════════════════════════════════
 
-static constexpr int BYTE_BLOCK_X = 32;
-static constexpr int BYTE_BLOCK_Y = 8;
-
-__global__ void golKernel(const uint8_t *src, uint8_t *dst,
-                          size_t rows, size_t cols) {
-  extern __shared__ uint8_t tile[];
-  const int tileW = blockDim.x + 2;
-
-  int col = blockIdx.x * blockDim.x + threadIdx.x;
-  int row = blockIdx.y * blockDim.y + threadIdx.y;
-  int tx = threadIdx.x + 1, ty = threadIdx.y + 1;
-
-  // Load center cell
-  tile[ty * tileW + tx] = (row < rows && col < cols)
-                            ? src[row * cols + col] : 0;
-
-  // Halo: edge threads load 1 extra cell
-  if (threadIdx.x == 0)
-    tile[ty * tileW] = (col > 0 && row < rows)
-                         ? src[row * cols + col - 1] : 0;
-  if (threadIdx.x == blockDim.x - 1)
-    tile[ty * tileW + tx + 1] = (col + 1 < cols && row < rows)
-                                  ? src[row * cols + col + 1] : 0;
-  if (threadIdx.y == 0)
-    tile[tx] = (row > 0 && col < cols)
-                 ? src[(row - 1) * cols + col] : 0;
-  if (threadIdx.y == blockDim.y - 1)
-    tile[(ty + 1) * tileW + tx] = (row + 1 < rows && col < cols)
-                                    ? src[(row + 1) * cols + col] : 0;
-
-  // 4 corner halos
-  if (threadIdx.x == 0 && threadIdx.y == 0)
-    tile[0] = (row > 0 && col > 0)
-                ? src[(row - 1) * cols + col - 1] : 0;
-  if (threadIdx.x == blockDim.x - 1 && threadIdx.y == 0)
-    tile[tx + 1] = (row > 0 && col + 1 < cols)
-                     ? src[(row - 1) * cols + col + 1] : 0;
-  if (threadIdx.x == 0 && threadIdx.y == blockDim.y - 1)
-    tile[(ty + 1) * tileW] = (row + 1 < rows && col > 0)
-                               ? src[(row + 1) * cols + col - 1] : 0;
-  if (threadIdx.x == blockDim.x - 1 && threadIdx.y == blockDim.y - 1)
-    tile[(ty + 1) * tileW + tx + 1] = (row + 1 < rows && col + 1 < cols)
-                                        ? src[(row + 1) * cols + col + 1] : 0;
-
-  __syncthreads();
-
-  if (row < rows && col < cols) {
-    uint8_t nb = tile[(ty - 1) * tileW + tx - 1] + tile[(ty - 1) * tileW + tx]
-               + tile[(ty - 1) * tileW + tx + 1]
-               + tile[ty * tileW + tx - 1] + tile[ty * tileW + tx + 1]
-               + tile[(ty + 1) * tileW + tx - 1] + tile[(ty + 1) * tileW + tx]
-               + tile[(ty + 1) * tileW + tx + 1];
-    uint8_t alive = tile[ty * tileW + tx];
-    dst[row * cols + col] = (nb == 3) | (alive & (nb == 2));
-  }
-}
-
-// ── CUDAGameOfLife implementation ───────────────────────────────────────────
-
-CUDAGameOfLife::CUDAGameOfLife(Grid &grid)
-    : hostGrid_(std::move(grid)) {
+template<typename CellT, typename HostGridT>
+CUDAEngineBase<CellT, HostGridT>::CUDAEngineBase(HostGridT hostGrid)
+    : hostGrid_(std::move(hostGrid)),
+      stride_(hostGrid_.getStride()) {
   rows_ = hostGrid_.getNumRows();
   cols_ = hostGrid_.getNumCols();
-  size_t bytes = rows_ * cols_ * sizeof(uint8_t);
-  CUDA_CHECK(cudaMalloc(&d_current_, bytes));
-  CUDA_CHECK(cudaMalloc(&d_next_, bytes));
-  CUDA_CHECK(cudaMemcpy(d_current_, hostGrid_.getData(), bytes,
+  size_t totalBytes = rows_ * stride_ * sizeof(CellT);
+  CUDA_CHECK(cudaMalloc(&d_current_, totalBytes));
+  CUDA_CHECK(cudaMalloc(&d_next_, totalBytes));
+  CUDA_CHECK(cudaMemcpy(d_current_, hostGrid_.getData(), totalBytes,
                          cudaMemcpyHostToDevice));
 }
 
-CUDAGameOfLife::~CUDAGameOfLife() {
+template<typename CellT, typename HostGridT>
+CUDAEngineBase<CellT, HostGridT>::~CUDAEngineBase() {
   cudaFree(d_current_);
   cudaFree(d_next_);
 }
 
-void CUDAGameOfLife::takeStep() {
-  dim3 block(BYTE_BLOCK_X, BYTE_BLOCK_Y);
-  dim3 grid((cols_ + BYTE_BLOCK_X - 1) / BYTE_BLOCK_X,
-            (rows_ + BYTE_BLOCK_Y - 1) / BYTE_BLOCK_Y);
-  size_t shmem = (BYTE_BLOCK_X + 2) * (BYTE_BLOCK_Y + 2) * sizeof(uint8_t);
-
-  golKernel<<<grid, block, shmem>>>(d_current_, d_next_, rows_, cols_);
-  CUDA_CHECK(cudaGetLastError());
-
-  uint8_t *tmp = d_current_;
+template<typename CellT, typename HostGridT>
+void CUDAEngineBase<CellT, HostGridT>::takeStep() {
+  launchKernel(d_current_, d_next_);
+  CellT *tmp = d_current_;
   d_current_ = d_next_;
   d_next_ = tmp;
 }
 
-Grid CUDAGameOfLife::getGrid() const {
-  Grid result(rows_, cols_);
-  CUDA_CHECK(cudaMemcpy(result.getData(), d_current_,
-                         rows_ * cols_ * sizeof(uint8_t),
+template<typename CellT, typename HostGridT>
+Grid CUDAEngineBase<CellT, HostGridT>::getGrid() const {
+  HostGridT tmp(rows_, cols_);
+  CUDA_CHECK(cudaMemcpy(tmp.getData(), d_current_,
+                         rows_ * stride_ * sizeof(CellT),
                          cudaMemcpyDeviceToHost));
-  return result;
+  if constexpr (std::is_same_v<HostGridT, Grid>)
+    return tmp;
+  else
+    return tmp.toGrid();
 }
 
-void *CUDAGameOfLife::getRowDataRaw(size_t row) {
+template<typename CellT, typename HostGridT>
+void *CUDAEngineBase<CellT, HostGridT>::getRowDataRaw(size_t row) {
   CUDA_CHECK(cudaMemcpy(hostGrid_.getRowData(row),
-                         d_current_ + row * cols_,
-                         cols_ * sizeof(uint8_t),
+                         d_current_ + row * stride_,
+                         stride_ * sizeof(CellT),
                          cudaMemcpyDeviceToHost));
   return hostGrid_.getRowData(row);
 }
 
-size_t CUDAGameOfLife::getStride() const { return cols_; }
+template<typename CellT, typename HostGridT>
+size_t CUDAEngineBase<CellT, HostGridT>::getStride() const { return stride_; }
 
-CellKind CUDAGameOfLife::getCellKind() const { return CellKind::Byte; }
-
-void CUDAGameOfLife::commitBoundaries() {
-  // Copy ghost rows 0 and rows-1 from host back to device
+template<typename CellT, typename HostGridT>
+void CUDAEngineBase<CellT, HostGridT>::commitBoundaries() {
   CUDA_CHECK(cudaMemcpy(d_current_,
                          hostGrid_.getRowData(0),
-                         cols_ * sizeof(uint8_t),
+                         stride_ * sizeof(CellT),
                          cudaMemcpyHostToDevice));
-  CUDA_CHECK(cudaMemcpy(d_current_ + (rows_ - 1) * cols_,
+  CUDA_CHECK(cudaMemcpy(d_current_ + (rows_ - 1) * stride_,
                          hostGrid_.getRowData(rows_ - 1),
-                         cols_ * sizeof(uint8_t),
+                         stride_ * sizeof(CellT),
                          cudaMemcpyHostToDevice));
 }
 
-// ── Bit-packed kernel helpers ───────────────────────────────────────────────
+template<typename CellT, typename HostGridT>
+void CUDAEngineBase<CellT, HostGridT>::sync() {
+  CUDA_CHECK(cudaDeviceSynchronize());
+}
+
+// Explicit instantiations
+template class CUDAEngineBase<uint8_t, Grid>;
+template class CUDAEngineBase<uint64_t, BitGrid>;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Byte-per-cell kernel + CUDAGameOfLife
+// ═══════════════════════════════════════════════════════════════════════════
+
+static constexpr int BYTE_BLOCK_X = 32;
+static constexpr int BYTE_BLOCK_Y = 8;
+static constexpr int BYTE_CELLS_PER_THREAD = 4;
+static constexpr int BYTE_TILE_COLS = BYTE_BLOCK_X * BYTE_CELLS_PER_THREAD; // 128
+
+__global__ void golKernel(const uint8_t *src, uint8_t *dst,
+                          unsigned int rows, unsigned int cols) {
+  extern __shared__ uint8_t tile[];
+  const unsigned int tileW = BYTE_TILE_COLS + 2;              // 130
+  const unsigned int tileRows = blockDim.y + 2;               // 10
+  const unsigned int tid = threadIdx.y * blockDim.x + threadIdx.x;
+  const unsigned int blockSize = blockDim.x * blockDim.y;     // 256
+
+  const unsigned int gc0 = blockIdx.x * BYTE_TILE_COLS;      // first interior col
+  const int gr0 = (int)(blockIdx.y * blockDim.y) - 1;        // first halo row
+
+  // ── Load interior: 32 uint32_t words per tile row × 10 rows = 320 words ──
+  const unsigned int wordsPerRow = BYTE_BLOCK_X;              // 32
+  const unsigned int totalWords = wordsPerRow * tileRows;     // 320
+
+  for (unsigned int i = tid; i < totalWords; i += blockSize) {
+    unsigned int tileRow = i / wordsPerRow;
+    unsigned int wordIdx = i % wordsPerRow;
+    int gr = gr0 + (int)tileRow;
+    unsigned int gc = gc0 + wordIdx * 4;
+    unsigned int tileBase = tileRow * tileW + 1 + wordIdx * 4;
+
+    if (gr >= 0 && (unsigned)gr < rows && gc + 3 < cols) {
+      // Full word — vectorised uint32_t load (coalesced: 128 bytes per warp)
+      uint32_t packed = *reinterpret_cast<const uint32_t*>(
+          &src[(unsigned)gr * cols + gc]);
+      tile[tileBase + 0] = packed;
+      tile[tileBase + 1] = packed >> 8;
+      tile[tileBase + 2] = packed >> 16;
+      tile[tileBase + 3] = packed >> 24;
+    } else {
+      // Partial word or out-of-bounds — per-byte fallback
+      for (int k = 0; k < 4; k++) {
+        tile[tileBase + k] =
+            (gr >= 0 && (unsigned)gr < rows && gc + k < cols)
+              ? src[(unsigned)gr * cols + gc + k] : 0;
+      }
+    }
+  }
+
+  // ── Load left/right halo columns (scalar, 20 bytes total) ──
+  if (tid < tileRows) {
+    int gr = gr0 + (int)tid;
+    int gc = (int)gc0 - 1;
+    tile[tid * tileW] =
+        (gr >= 0 && (unsigned)gr < rows && gc >= 0 && (unsigned)gc < cols)
+          ? src[(unsigned)gr * cols + (unsigned)gc] : 0;
+  }
+  if (tid >= tileRows && tid < tileRows * 2) {
+    unsigned int r = tid - tileRows;
+    int gr = gr0 + (int)r;
+    unsigned int gc = gc0 + BYTE_TILE_COLS;
+    tile[r * tileW + tileW - 1] =
+        (gr >= 0 && (unsigned)gr < rows && gc < cols)
+          ? src[(unsigned)gr * cols + gc] : 0;
+  }
+
+  __syncthreads();
+
+  // ── Compute: each thread processes 4 consecutive cells ──
+  unsigned int baseCol = gc0 + threadIdx.x * 4;
+  unsigned int row = blockIdx.y * blockDim.y + threadIdx.y;
+  unsigned int tx = threadIdx.x * 4 + 1;   // +1 for left halo offset
+  unsigned int ty = threadIdx.y + 1;        // +1 for top halo offset
+
+  if (row < rows && baseCol + 3 < cols) {
+    // Vectorised path: all 4 cells valid
+    uint32_t result = 0;
+    #pragma unroll
+    for (int k = 0; k < 4; k++) {
+      unsigned int cx = tx + k;
+      unsigned int nb = tile[(ty-1)*tileW + cx-1] + tile[(ty-1)*tileW + cx] + tile[(ty-1)*tileW + cx+1]
+                      + tile[ty*tileW + cx-1]                                + tile[ty*tileW + cx+1]
+                      + tile[(ty+1)*tileW + cx-1] + tile[(ty+1)*tileW + cx] + tile[(ty+1)*tileW + cx+1];
+      unsigned int alive = tile[ty * tileW + cx];
+      unsigned int cell = (nb == 3) | (alive & (nb == 2));
+      result |= (cell & 0xFF) << (k * 8);
+    }
+    *reinterpret_cast<uint32_t*>(&dst[row * cols + baseCol]) = result;
+  } else if (row < rows && baseCol < cols) {
+    // Scalar fallback: partial word at right edge
+    for (int k = 0; k < 4 && baseCol + k < cols; k++) {
+      unsigned int cx = tx + k;
+      unsigned int nb = tile[(ty-1)*tileW + cx-1] + tile[(ty-1)*tileW + cx] + tile[(ty-1)*tileW + cx+1]
+                      + tile[ty*tileW + cx-1]                                + tile[ty*tileW + cx+1]
+                      + tile[(ty+1)*tileW + cx-1] + tile[(ty+1)*tileW + cx] + tile[(ty+1)*tileW + cx+1];
+      unsigned int alive = tile[ty * tileW + cx];
+      dst[row * cols + baseCol + k] = (nb == 3) | (alive & (nb == 2));
+    }
+  }
+}
+
+CUDAGameOfLife::CUDAGameOfLife(Grid &grid)
+    : CUDAEngineBase(std::move(grid)) {}
+
+CellKind CUDAGameOfLife::getCellKind() const { return CellKind::Byte; }
+
+void CUDAGameOfLife::launchKernel(const uint8_t *src, uint8_t *dst) {
+  dim3 block(BYTE_BLOCK_X, BYTE_BLOCK_Y);
+  dim3 grid((cols_ + BYTE_TILE_COLS - 1) / BYTE_TILE_COLS,
+            (rows_ + BYTE_BLOCK_Y - 1) / BYTE_BLOCK_Y);
+  size_t shmem = (BYTE_TILE_COLS + 2) * (BYTE_BLOCK_Y + 2) * sizeof(uint8_t);
+  golKernel<<<grid, block, shmem>>>(src, dst,
+      static_cast<unsigned int>(rows_), static_cast<unsigned int>(cols_));
+  CUDA_CHECK(cudaGetLastError());
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Bit-packed kernel + CUDABitPackGameOfLife
+// ═══════════════════════════════════════════════════════════════════════════
 
 __device__ void d_rowSum3(uint64_t L, uint64_t C, uint64_t R,
                           uint64_t &s1, uint64_t &s0) {
@@ -165,52 +239,34 @@ __device__ void d_sum9(uint64_t p1, uint64_t p0,
   o3    = t2 & carry;
 }
 
-// ── Bit-packed kernel ───────────────────────────────────────────────────────
-
 static constexpr int BIT_BLOCK_X = 32;
 static constexpr int BIT_BLOCK_Y = 8;
 
 __global__ void golBitPackKernel(const uint64_t *src, uint64_t *dst,
-                                 size_t rows, size_t nw, uint64_t lastMask) {
+                                 unsigned int rows, unsigned int nw,
+                                 uint64_t lastMask) {
   extern __shared__ uint64_t stile[];
-  const int tileW = blockDim.x + 2;
+  const unsigned int tileW = blockDim.x + 2;
+  const unsigned int tileSize = tileW * (blockDim.y + 2);
+  const unsigned int tid = threadIdx.y * blockDim.x + threadIdx.x;
+  const unsigned int blockSize = blockDim.x * blockDim.y;
 
-  int w   = blockIdx.x * blockDim.x + threadIdx.x;
-  int row = blockIdx.y * blockDim.y + threadIdx.y;
-  int tx = threadIdx.x + 1, ty = threadIdx.y + 1;
+  const int gr0 = blockIdx.y * blockDim.y - 1;
+  const int gw0 = blockIdx.x * blockDim.x - 1;
 
-  // Load center word
-  stile[ty * tileW + tx] = (row < rows && w < nw) ? src[row * nw + w] : 0;
-
-  // Halo: left/right word neighbors
-  if (threadIdx.x == 0)
-    stile[ty * tileW] = (w > 0 && row < rows) ? src[row * nw + w - 1] : 0;
-  if (threadIdx.x == blockDim.x - 1)
-    stile[ty * tileW + tx + 1] = (w + 1 < nw && row < rows)
-                                   ? src[row * nw + w + 1] : 0;
-
-  // Halo: top/bottom rows
-  if (threadIdx.y == 0)
-    stile[tx] = (row > 0 && w < nw) ? src[(row - 1) * nw + w] : 0;
-  if (threadIdx.y == blockDim.y - 1)
-    stile[(ty + 1) * tileW + tx] = (row + 1 < rows && w < nw)
-                                     ? src[(row + 1) * nw + w] : 0;
-
-  // Halo: top-left, top-right
-  if (threadIdx.x == 0 && threadIdx.y == 0)
-    stile[0] = (row > 0 && w > 0) ? src[(row - 1) * nw + w - 1] : 0;
-  if (threadIdx.x == blockDim.x - 1 && threadIdx.y == 0)
-    stile[tx + 1] = (row > 0 && w + 1 < nw) ? src[(row - 1) * nw + w + 1] : 0;
-
-  // Halo: bottom-left, bottom-right
-  if (threadIdx.x == 0 && threadIdx.y == blockDim.y - 1)
-    stile[(ty + 1) * tileW] = (row + 1 < rows && w > 0)
-                                ? src[(row + 1) * nw + w - 1] : 0;
-  if (threadIdx.x == blockDim.x - 1 && threadIdx.y == blockDim.y - 1)
-    stile[(ty + 1) * tileW + tx + 1] = (row + 1 < rows && w + 1 < nw)
-                                         ? src[(row + 1) * nw + w + 1] : 0;
+  // Cooperative flat tile load — all threads participate, no divergent branches
+  for (unsigned int i = tid; i < tileSize; i += blockSize) {
+    int gr = gr0 + (int)(i / tileW);
+    int gw = gw0 + (int)(i % tileW);
+    stile[i] = (gr >= 0 && (unsigned)gr < rows && gw >= 0 && (unsigned)gw < nw)
+                 ? src[(unsigned)gr * nw + (unsigned)gw] : 0;
+  }
 
   __syncthreads();
+
+  unsigned int w   = blockIdx.x * blockDim.x + threadIdx.x;
+  unsigned int row = blockIdx.y * blockDim.y + threadIdx.y;
+  unsigned int tx = threadIdx.x + 1, ty = threadIdx.y + 1;
 
   if (row < rows && w < nw) {
     // Current row: shift bits across word boundaries using shared memory
@@ -245,89 +301,27 @@ __global__ void golBitPackKernel(const uint64_t *src, uint64_t *dst,
   }
 }
 
-// ── CUDABitPackGameOfLife implementation ────────────────────────────────────
-
 CUDABitPackGameOfLife::CUDABitPackGameOfLife(Grid &grid)
-    : hostGrid_(grid),
-      wordsPerRow_((grid.getNumCols() + 63) / 64) {
-  rows_ = hostGrid_.getNumRows();
-  cols_ = hostGrid_.getNumCols();
-  size_t totalWords = rows_ * wordsPerRow_;
-  CUDA_CHECK(cudaMalloc(&d_current_, totalWords * sizeof(uint64_t)));
-  CUDA_CHECK(cudaMalloc(&d_next_, totalWords * sizeof(uint64_t)));
-  CUDA_CHECK(cudaMemcpy(d_current_, hostGrid_.getData(),
-                         totalWords * sizeof(uint64_t),
-                         cudaMemcpyHostToDevice));
-}
+    : CUDAEngineBase(BitGrid(grid)) {}
 
 CUDABitPackGameOfLife::CUDABitPackGameOfLife(BitGrid &grid)
-    : hostGrid_(std::move(grid)),
-      wordsPerRow_(hostGrid_.getStride()) {
-  rows_ = hostGrid_.getNumRows();
-  cols_ = hostGrid_.getNumCols();
-  size_t totalWords = rows_ * wordsPerRow_;
-  CUDA_CHECK(cudaMalloc(&d_current_, totalWords * sizeof(uint64_t)));
-  CUDA_CHECK(cudaMalloc(&d_next_, totalWords * sizeof(uint64_t)));
-  CUDA_CHECK(cudaMemcpy(d_current_, hostGrid_.getData(),
-                         totalWords * sizeof(uint64_t),
-                         cudaMemcpyHostToDevice));
+    : CUDAEngineBase(std::move(grid)) {}
+
+CellKind CUDABitPackGameOfLife::getCellKind() const {
+  return CellKind::BitPacked;
 }
 
-CUDABitPackGameOfLife::~CUDABitPackGameOfLife() {
-  cudaFree(d_current_);
-  cudaFree(d_next_);
-}
-
-void CUDABitPackGameOfLife::takeStep() {
+void CUDABitPackGameOfLife::launchKernel(const uint64_t *src, uint64_t *dst) {
   dim3 block(BIT_BLOCK_X, BIT_BLOCK_Y);
-  dim3 grid((wordsPerRow_ + BIT_BLOCK_X - 1) / BIT_BLOCK_X,
+  dim3 grid((stride_ + BIT_BLOCK_X - 1) / BIT_BLOCK_X,
             (rows_ + BIT_BLOCK_Y - 1) / BIT_BLOCK_Y);
   size_t shmem = (BIT_BLOCK_X + 2) * (BIT_BLOCK_Y + 2) * sizeof(uint64_t);
 
   uint64_t lastMask = (cols_ % 64 == 0) ? ~uint64_t(0)
                                          : (uint64_t(1) << (cols_ % 64)) - 1;
 
-  golBitPackKernel<<<grid, block, shmem>>>(d_current_, d_next_,
-                                            rows_, wordsPerRow_, lastMask);
+  golBitPackKernel<<<grid, block, shmem>>>(src, dst,
+      static_cast<unsigned int>(rows_), static_cast<unsigned int>(stride_),
+      lastMask);
   CUDA_CHECK(cudaGetLastError());
-
-  uint64_t *tmp = d_current_;
-  d_current_ = d_next_;
-  d_next_ = tmp;
-}
-
-Grid CUDABitPackGameOfLife::getGrid() const {
-  size_t totalWords = rows_ * wordsPerRow_;
-  // Copy to a temporary BitGrid to convert
-  BitGrid tmp(rows_, cols_);
-  CUDA_CHECK(cudaMemcpy(tmp.getData(), d_current_,
-                         totalWords * sizeof(uint64_t),
-                         cudaMemcpyDeviceToHost));
-  return tmp.toGrid();
-}
-
-void *CUDABitPackGameOfLife::getRowDataRaw(size_t row) {
-  CUDA_CHECK(cudaMemcpy(hostGrid_.getRowData(row),
-                         d_current_ + row * wordsPerRow_,
-                         wordsPerRow_ * sizeof(uint64_t),
-                         cudaMemcpyDeviceToHost));
-  return hostGrid_.getRowData(row);
-}
-
-size_t CUDABitPackGameOfLife::getStride() const { return wordsPerRow_; }
-
-CellKind CUDABitPackGameOfLife::getCellKind() const {
-  return CellKind::BitPacked;
-}
-
-void CUDABitPackGameOfLife::commitBoundaries() {
-  // Copy ghost rows 0 and rows-1 from host back to device
-  CUDA_CHECK(cudaMemcpy(d_current_,
-                         hostGrid_.getRowData(0),
-                         wordsPerRow_ * sizeof(uint64_t),
-                         cudaMemcpyHostToDevice));
-  CUDA_CHECK(cudaMemcpy(d_current_ + (rows_ - 1) * wordsPerRow_,
-                         hostGrid_.getRowData(rows_ - 1),
-                         wordsPerRow_ * sizeof(uint64_t),
-                         cudaMemcpyHostToDevice));
 }

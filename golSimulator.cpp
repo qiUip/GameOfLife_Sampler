@@ -55,14 +55,31 @@ int main(int argc, char **argv) {
 
   omp_set_num_threads(params.numThreads);
 
-  // Change these two type args to switch engine:
-  // auto game = setupGame<BitGrid, BitPackGameOfLife>(grid, mpiRank, mpiSize);
+  std::unique_ptr<GameOfLife> game;
+  switch (params.engine) {
+  case ENGINE_SIMPLE:
+    game = setupGame<Grid, SimpleGameOfLife>(grid, mpiRank, mpiSize);
+    break;
+  case ENGINE_SIMD:
+    game = setupGame<Grid, SIMDGameOfLife>(grid, mpiRank, mpiSize);
+    break;
+  case ENGINE_BITPACK:
+    game = setupGame<BitGrid, BitPackGameOfLife>(grid, mpiRank, mpiSize);
+    break;
 #if GOL_CUDA
-  // auto game = setupGame<Grid, CUDAGameOfLife>(grid, mpiRank, mpiSize);
-  auto game = setupGame<BitGrid, CUDABitPackGameOfLife>(grid, mpiRank, mpiSize);
-#else
-  auto game = setupGame<Grid, SIMDGameOfLife>(grid, mpiRank, mpiSize);
+  case ENGINE_CUDA:
+    game = setupGame<Grid, CUDAGameOfLife>(grid, mpiRank, mpiSize);
+    break;
+  case ENGINE_CUDA_BITPACK:
+    game = setupGame<BitGrid, CUDABitPackGameOfLife>(grid, mpiRank, mpiSize);
+    break;
 #endif
+  default:
+    if (mpiRank == 0)
+      std::cerr << "Error: engine not available (built without CUDA?)\n";
+    MPI_Finalize();
+    return EXIT_FAILURE;
+  }
 
   // ── Single-rank path: pure OpenMP, no MPI communication ─────────────────
   if (mpiSize == 1) {
@@ -74,6 +91,7 @@ int main(int argc, char **argv) {
         printStep(game->getGrid(), "Generation:", step + 1, params.sleepTime);
     }
 
+    game->sync();
     double elapsed = std::chrono::duration<double>(
         std::chrono::high_resolution_clock::now() - t_start).count();
     const Grid finalGrid = game->getGrid();
@@ -104,6 +122,7 @@ int main(int argc, char **argv) {
     }
   }
 
+  game->sync();
   double elapsed = std::chrono::duration<double>(
       std::chrono::high_resolution_clock::now() - t_start).count();
 

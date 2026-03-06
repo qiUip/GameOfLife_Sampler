@@ -63,6 +63,7 @@ void printHelp() {
       << "  -p, --print <float>          Print each step (delay in seconds)\n"
       << "  -o, --output <filename>.txt  Output file name\n"
       << "  -n, --numthreads <int>       Number of OpenMP threads\n"
+      << "  -e, --engine <name>          Engine: simple, simd, bitpack, cuda, cuda-bitpack\n"
       << "  -h, --help                   Print this help message\n";
 }
 
@@ -88,7 +89,7 @@ void printStep(const Grid &grid, const std::string &label, int value,
 }
 
 bool initSimulation(int argc, char **argv, Grid &grid, SimParams &params) {
-  const char *const short_opts = "f:r:s:g:n:p:o:h";
+  const char *const short_opts = "f:r:s:g:n:p:o:e:h";
   const option long_opts[] = {{"file", required_argument, nullptr, 'f'},
                               {"random", required_argument, nullptr, 'r'},
                               {"seed", required_argument, nullptr, 's'},
@@ -96,6 +97,7 @@ bool initSimulation(int argc, char **argv, Grid &grid, SimParams &params) {
                               {"numthreads", required_argument, nullptr, 'n'},
                               {"print", optional_argument, nullptr, 'p'},
                               {"output", required_argument, nullptr, 'o'},
+                              {"engine", required_argument, nullptr, 'e'},
                               {"help", no_argument, nullptr, 'h'},
                               {nullptr, no_argument, nullptr, 0}};
 
@@ -129,6 +131,20 @@ bool initSimulation(int argc, char **argv, Grid &grid, SimParams &params) {
     case 'n':
       params.numThreads = std::stoi(optarg);
       break;
+    case 'e': {
+      std::string eng = optarg;
+      if      (eng == "simple")        params.engine = ENGINE_SIMPLE;
+      else if (eng == "simd")         params.engine = ENGINE_SIMD;
+      else if (eng == "bitpack")      params.engine = ENGINE_BITPACK;
+      else if (eng == "cuda")         params.engine = ENGINE_CUDA;
+      else if (eng == "cuda-bitpack") params.engine = ENGINE_CUDA_BITPACK;
+      else {
+        std::cerr << "Error: unknown engine '" << eng << "'\n";
+        printHelp();
+        return false;
+      }
+      break;
+    }
     case 'h':
       printHelp();
       return false;
@@ -172,6 +188,7 @@ void mpiBroadcastSimInfo(SimParams &params) {
   MPI_Bcast(&params.fullGridRows, 1, MPI_UNSIGNED_LONG, 0, MPI_COMM_WORLD);
   MPI_Bcast(&params.fullGridColumns, 1, MPI_UNSIGNED_LONG, 0, MPI_COMM_WORLD);
   MPI_Bcast(&params.sleepTime, 1, MPI_FLOAT, 0, MPI_COMM_WORLD);
+  MPI_Bcast(&params.engine, 1, MPI_INT, 0, MPI_COMM_WORLD);
 }
 
 // ── Game-level MPI (use virtual base) ───────────────────────────────────────
