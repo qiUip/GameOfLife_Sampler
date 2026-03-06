@@ -63,7 +63,7 @@ void printHelp() {
       << "  -p, --print <float>          Print each step (delay in seconds)\n"
       << "  -o, --output <filename>.txt  Output file name\n"
       << "  -n, --numthreads <int>       Number of OpenMP threads\n"
-      << "  -e, --engine <name>          Engine: simple, simd, bitpack, cuda, cuda-bitpack\n"
+      << "  -e, --engine <name>          Engine: simple, simd, bitpack, cuda, cuda-colbatch, cuda-bitpack\n"
       << "  -h, --help                   Print this help message\n";
 }
 
@@ -137,6 +137,7 @@ bool initSimulation(int argc, char **argv, Grid &grid, SimParams &params) {
       else if (eng == "simd")         params.engine = ENGINE_SIMD;
       else if (eng == "bitpack")      params.engine = ENGINE_BITPACK;
       else if (eng == "cuda")         params.engine = ENGINE_CUDA;
+      else if (eng == "cuda-colbatch") params.engine = ENGINE_CUDA_COLBATCH;
       else if (eng == "cuda-bitpack") params.engine = ENGINE_CUDA_BITPACK;
       else {
         std::cerr << "Error: unknown engine '" << eng << "'\n";
@@ -156,25 +157,38 @@ bool initSimulation(int argc, char **argv, Grid &grid, SimParams &params) {
 
   if (!filePath.empty()) {
     grid = Grid(filePath);
+    params.fullGridRows = grid.getNumRows();
+    params.fullGridColumns = grid.getNumCols();
+    params.alive = grid.aliveCells();
   } else if (!randomArgs.empty()) {
     auto values = parseArgs(randomArgs);
     if (values.size() != 3) {
       std::cerr << "Error: -r expects rows,cols,alive\n";
       return false;
     }
-    std::mt19937 rng(seedProvided ? params.seed : std::random_device()());
-    grid = Grid(values[0], values[1], values[2], rng);
+    params.fullGridRows = values[0];
+    params.fullGridColumns = values[1];
+    params.alive = values[2];
+    params.randomInit = true;
+    if (!seedProvided) params.seed = std::random_device()();
+
+    // Bitpack engines construct BitGrid directly — skip 2.5GB Grid allocation
+    bool needsGrid = (params.engine != ENGINE_BITPACK);
+#if GOL_CUDA
+    needsGrid = needsGrid && (params.engine != ENGINE_CUDA_BITPACK);
+#endif
+    if (needsGrid) {
+      std::mt19937 rng(params.seed);
+      grid = Grid(values[0], values[1], values[2], rng);
+    }
   } else {
     std::cerr << "Error: No initialization option provided.\n";
     printHelp();
     return false;
   }
 
-  params.fullGridRows = grid.getNumRows();
-  params.fullGridColumns = grid.getNumCols();
-
   std::cout << "Initializing GameOfLife with grid size (" << params.fullGridRows
-            << ", " << params.fullGridColumns << ") and " << grid.aliveCells()
+            << ", " << params.fullGridColumns << ") and " << params.alive
             << " alive cells for " << params.steps << " generations\n";
 
   return true;

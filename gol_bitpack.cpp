@@ -9,6 +9,24 @@ BitGrid::BitGrid(size_t rows, size_t cols)
     : GridStorage(rows, cols, (cols + 63) / 64),
       wordsPerRow_((cols + 63) / 64) {}
 
+BitGrid::BitGrid(size_t rows, size_t cols, unsigned int alive, std::mt19937 &rng)
+    : GridStorage(rows, cols, (cols + 63) / 64),
+      wordsPerRow_((cols + 63) / 64) {
+  std::uniform_int_distribution<size_t> dist(0, rows * cols - 1);
+  size_t uniqueNumbers = 0;
+  while (uniqueNumbers < alive) {
+    size_t idx = dist(rng);
+    size_t r = idx / cols;
+    size_t c = idx % cols;
+    uint64_t &word = data_[r * wordsPerRow_ + c / 64];
+    uint64_t bit = uint64_t(1) << (c % 64);
+    if (!(word & bit)) {
+      word |= bit;
+      uniqueNumbers++;
+    }
+  }
+}
+
 BitGrid::BitGrid(const Grid &g)
     : GridStorage(g.getNumRows(), g.getNumCols(), (g.getNumCols() + 63) / 64),
       wordsPerRow_((g.getNumCols() + 63) / 64) {

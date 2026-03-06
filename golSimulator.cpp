@@ -45,7 +45,8 @@ int main(int argc, char **argv) {
       MPI_Finalize();
       return EXIT_FAILURE;
     }
-    if (params.sleepTime >= 0) printStep(grid, "Generation:", 0);
+    if (params.sleepTime >= 0 && grid.getNumRows() > 0)
+      printStep(grid, "Generation:", 0);
   }
 
   if (mpiSize > 1) {
@@ -64,14 +65,29 @@ int main(int argc, char **argv) {
     game = setupGame<Grid, SIMDGameOfLife>(grid, mpiRank, mpiSize);
     break;
   case ENGINE_BITPACK:
-    game = setupGame<BitGrid, BitPackGameOfLife>(grid, mpiRank, mpiSize);
+    if (params.randomInit && mpiSize == 1) {
+      std::mt19937 rng(params.seed);
+      BitGrid bg(params.fullGridRows, params.fullGridColumns, params.alive, rng);
+      game = std::make_unique<BitPackGameOfLife>(bg);
+    } else {
+      game = setupGame<BitGrid, BitPackGameOfLife>(grid, mpiRank, mpiSize);
+    }
     break;
 #if GOL_CUDA
   case ENGINE_CUDA:
     game = setupGame<Grid, CUDAGameOfLife>(grid, mpiRank, mpiSize);
     break;
+  case ENGINE_CUDA_COLBATCH:
+    game = setupGame<Grid, CUDAColBatchGameOfLife>(grid, mpiRank, mpiSize);
+    break;
   case ENGINE_CUDA_BITPACK:
-    game = setupGame<BitGrid, CUDABitPackGameOfLife>(grid, mpiRank, mpiSize);
+    if (params.randomInit && mpiSize == 1) {
+      std::mt19937 rng(params.seed);
+      BitGrid bg(params.fullGridRows, params.fullGridColumns, params.alive, rng);
+      game = std::make_unique<CUDABitPackGameOfLife>(bg);
+    } else {
+      game = setupGame<BitGrid, CUDABitPackGameOfLife>(grid, mpiRank, mpiSize);
+    }
     break;
 #endif
   default:

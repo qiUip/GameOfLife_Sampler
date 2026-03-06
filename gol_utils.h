@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-enum Engine : int { ENGINE_SIMD = 0, ENGINE_BITPACK, ENGINE_CUDA, ENGINE_CUDA_BITPACK, ENGINE_SIMPLE };
+enum Engine : int { ENGINE_SIMD = 0, ENGINE_BITPACK, ENGINE_CUDA, ENGINE_CUDA_COLBATCH, ENGINE_CUDA_BITPACK, ENGINE_SIMPLE };
 
 struct SimParams {
   unsigned int steps = 1;
@@ -16,6 +16,8 @@ struct SimParams {
   int engine = ENGINE_SIMD;
   size_t fullGridRows = 0;
   size_t fullGridColumns = 0;
+  unsigned int alive = 0;
+  bool randomInit = false;
 };
 
 bool initSimulation(int argc, char **argv, Grid &grid, SimParams &params);

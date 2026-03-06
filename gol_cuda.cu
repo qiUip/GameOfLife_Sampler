@@ -208,6 +208,118 @@ void CUDAGameOfLife::launchKernel(const uint8_t *src, uint8_t *dst) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Column-batch byte kernel + CUDAColBatchGameOfLife
+// Same tile load/compute as golKernel, but gridDim.y=1: each block loops
+// over all row batches instead of one block per tile.
+// ═══════════════════════════════════════════════════════════════════════════
+
+__global__ void golKernelColBatch(const uint8_t *src, uint8_t *dst,
+                                   unsigned int rows, unsigned int cols) {
+  extern __shared__ uint8_t cbtile[];
+  const unsigned int tileW = BYTE_TILE_COLS + 2;
+  const unsigned int tileRows = blockDim.y + 2;
+  const unsigned int tid = threadIdx.y * blockDim.x + threadIdx.x;
+  const unsigned int blockSize = blockDim.x * blockDim.y;
+
+  const unsigned int gc0 = blockIdx.x * BYTE_TILE_COLS;
+  const unsigned int wordsPerRow = BYTE_BLOCK_X;
+  const unsigned int totalWords = wordsPerRow * tileRows;
+
+  const unsigned int tx = threadIdx.x * 4 + 1;
+  const unsigned int ty = threadIdx.y + 1;
+  const unsigned int baseCol = gc0 + threadIdx.x * 4;
+
+  for (unsigned int rowBatch = 0; rowBatch < rows; rowBatch += blockDim.y) {
+    const int gr0 = (int)rowBatch - 1;
+
+    // ── Load interior ──
+    for (unsigned int i = tid; i < totalWords; i += blockSize) {
+      unsigned int tr = i / wordsPerRow;
+      unsigned int wi = i % wordsPerRow;
+      int gr = gr0 + (int)tr;
+      unsigned int gc = gc0 + wi * 4;
+      unsigned int tileBase = tr * tileW + 1 + wi * 4;
+
+      if (gr >= 0 && (unsigned)gr < rows && gc + 3 < cols) {
+        uint32_t packed = *reinterpret_cast<const uint32_t*>(
+            &src[(unsigned)gr * cols + gc]);
+        cbtile[tileBase + 0] = packed;
+        cbtile[tileBase + 1] = packed >> 8;
+        cbtile[tileBase + 2] = packed >> 16;
+        cbtile[tileBase + 3] = packed >> 24;
+      } else {
+        for (int k = 0; k < 4; k++) {
+          cbtile[tileBase + k] =
+              (gr >= 0 && (unsigned)gr < rows && gc + k < cols)
+                ? src[(unsigned)gr * cols + gc + k] : 0;
+        }
+      }
+    }
+
+    // ── Load left/right halo ──
+    if (tid < tileRows) {
+      int gr = gr0 + (int)tid;
+      int gc = (int)gc0 - 1;
+      cbtile[tid * tileW] =
+          (gr >= 0 && (unsigned)gr < rows && gc >= 0 && (unsigned)gc < cols)
+            ? src[(unsigned)gr * cols + (unsigned)gc] : 0;
+    }
+    if (tid >= tileRows && tid < tileRows * 2) {
+      unsigned int r = tid - tileRows;
+      int gr = gr0 + (int)r;
+      unsigned int gc = gc0 + BYTE_TILE_COLS;
+      cbtile[r * tileW + tileW - 1] =
+          (gr >= 0 && (unsigned)gr < rows && gc < cols)
+            ? src[(unsigned)gr * cols + gc] : 0;
+    }
+
+    __syncthreads();
+
+    // ── Compute ──
+    unsigned int row = rowBatch + threadIdx.y;
+
+    if (row < rows && baseCol + 3 < cols) {
+      uint32_t result = 0;
+      for (int k = 0; k < 4; k++) {
+        unsigned int cx = tx + k;
+        unsigned int nb = cbtile[(ty-1)*tileW + cx-1] + cbtile[(ty-1)*tileW + cx] + cbtile[(ty-1)*tileW + cx+1]
+                        + cbtile[ty*tileW + cx-1]                                  + cbtile[ty*tileW + cx+1]
+                        + cbtile[(ty+1)*tileW + cx-1] + cbtile[(ty+1)*tileW + cx]  + cbtile[(ty+1)*tileW + cx+1];
+        unsigned int alive = cbtile[ty * tileW + cx];
+        unsigned int cell = (nb == 3) | (alive & (nb == 2));
+        result |= (cell & 0xFF) << (k * 8);
+      }
+      *reinterpret_cast<uint32_t*>(&dst[row * cols + baseCol]) = result;
+    } else if (row < rows && baseCol < cols) {
+      for (int k = 0; k < 4 && baseCol + k < cols; k++) {
+        unsigned int cx = tx + k;
+        unsigned int nb = cbtile[(ty-1)*tileW + cx-1] + cbtile[(ty-1)*tileW + cx] + cbtile[(ty-1)*tileW + cx+1]
+                        + cbtile[ty*tileW + cx-1]                                  + cbtile[ty*tileW + cx+1]
+                        + cbtile[(ty+1)*tileW + cx-1] + cbtile[(ty+1)*tileW + cx]  + cbtile[(ty+1)*tileW + cx+1];
+        unsigned int alive = cbtile[ty * tileW + cx];
+        dst[row * cols + baseCol + k] = (nb == 3) | (alive & (nb == 2));
+      }
+    }
+
+    __syncthreads();  // all threads must finish before next iteration overwrites tile
+  }
+}
+
+CUDAColBatchGameOfLife::CUDAColBatchGameOfLife(Grid &grid)
+    : CUDAEngineBase(std::move(grid)) {}
+
+CellKind CUDAColBatchGameOfLife::getCellKind() const { return CellKind::Byte; }
+
+void CUDAColBatchGameOfLife::launchKernel(const uint8_t *src, uint8_t *dst) {
+  dim3 block(BYTE_BLOCK_X, BYTE_BLOCK_Y);
+  dim3 grid((cols_ + BYTE_TILE_COLS - 1) / BYTE_TILE_COLS, 1);  // y=1: loop over rows
+  size_t shmem = (BYTE_TILE_COLS + 2) * (BYTE_BLOCK_Y + 2) * sizeof(uint8_t);
+  golKernelColBatch<<<grid, block, shmem>>>(src, dst,
+      static_cast<unsigned int>(rows_), static_cast<unsigned int>(cols_));
+  CUDA_CHECK(cudaGetLastError());
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Bit-packed kernel + CUDABitPackGameOfLife
 // ═══════════════════════════════════════════════════════════════════════════
 

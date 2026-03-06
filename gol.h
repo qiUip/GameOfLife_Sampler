@@ -84,6 +84,7 @@ class BitGrid : public GridStorage<uint64_t> {
 public:
   BitGrid() = default;
   BitGrid(size_t rows, size_t cols);
+  BitGrid(size_t rows, size_t cols, unsigned int alive, std::mt19937 &rng);
   explicit BitGrid(const Grid &g);
   Grid toGrid() const;
 
@@ -203,6 +204,14 @@ protected:
 class CUDAGameOfLife : public CUDAEngineBase<uint8_t, Grid> {
 public:
   explicit CUDAGameOfLife(Grid &grid);
+  CellKind getCellKind() const override;
+protected:
+  void launchKernel(const uint8_t *src, uint8_t *dst) override;
+};
+
+class CUDAColBatchGameOfLife : public CUDAEngineBase<uint8_t, Grid> {
+public:
+  explicit CUDAColBatchGameOfLife(Grid &grid);
   CellKind getCellKind() const override;
 protected:
   void launchKernel(const uint8_t *src, uint8_t *dst) override;
