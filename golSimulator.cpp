@@ -110,10 +110,12 @@ int main(int argc, char **argv) {
     game->sync();
     double elapsed = std::chrono::duration<double>(
         std::chrono::high_resolution_clock::now() - t_start).count();
-    const Grid finalGrid = game->getGrid();
-    if (params.sleepTime >= 0) printStep(finalGrid, "Generation:", params.steps);
-    if (!params.outfile.empty())
-      finalGrid.writeToFile(params.outfile);
+    if (params.sleepTime >= 0 || !params.outfile.empty()) {
+      const Grid finalGrid = game->getGrid();
+      if (params.sleepTime >= 0) printStep(finalGrid, "Generation:", params.steps);
+      if (!params.outfile.empty())
+        finalGrid.writeToFile(params.outfile);
+    }
     std::cout << "Game completed in " << elapsed << " seconds\n";
     MPI_Finalize();
     return EXIT_SUCCESS;
