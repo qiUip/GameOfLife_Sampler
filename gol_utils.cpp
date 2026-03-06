@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstring>
 #include <iostream>
+#include <type_traits>
 #include <random>
 #include <sstream>
 
@@ -173,9 +174,9 @@ void mpiBroadcastSimInfo(SimParams &params) {
   MPI_Bcast(&params.sleepTime, 1, MPI_FLOAT, 0, MPI_COMM_WORLD);
 }
 
-// ── Unified game-level MPI ──────────────────────────────────────────────────
+// ── Game-level MPI (use virtual base) ───────────────────────────────────────
 
-void exchangeBoundaryRows(GameOfLifeBase &game, int mpiRank, int mpiSize) {
+void exchangeBoundaryRows(GameOfLife &game, int mpiRank, int mpiSize) {
   MPI_Datatype dtype = (game.getCellKind() == CellKind::Byte)
                            ? MPI_UINT8_T : MPI_UINT64_T;
   int stride = static_cast<int>(game.getStride());
@@ -200,7 +201,7 @@ void exchangeBoundaryRows(GameOfLifeBase &game, int mpiRank, int mpiSize) {
   }
 }
 
-void assembleSend(GameOfLifeBase &game, int mpiRank, int mpiSize) {
+void assembleSend(GameOfLife &game, int mpiRank, int mpiSize) {
   MPI_Datatype dtype = (game.getCellKind() == CellKind::Byte)
                            ? MPI_UINT8_T : MPI_UINT64_T;
   int stride = static_cast<int>(game.getStride());
@@ -212,54 +213,47 @@ void assembleSend(GameOfLifeBase &game, int mpiRank, int mpiSize) {
   }
 }
 
-Grid assembleFullGrid(GameOfLifeBase &game, size_t fullRows, size_t fullCols,
-                      int mpiSize) {
+template<typename GridType>
+static Grid assembleFullGridImpl(GameOfLife &game, size_t fullRows,
+                                 size_t fullCols, int mpiSize) {
   size_t localRows = game.getNumRows();
+  int stride = static_cast<int>(game.getStride());
   const auto rowRanges = getRowRanges(mpiSize, fullRows);
 
-  if (game.getCellKind() == CellKind::Byte) {
-    int stride = static_cast<int>(game.getStride());
-    Grid assembled(fullRows, fullCols);
-    for (size_t row = 0; row < localRows - 1; ++row)
-      assembled.setRow(row,
-          static_cast<const uint8_t *>(game.getRowDataRaw(row)));
-    for (int rank = 1; rank < mpiSize; ++rank) {
-      size_t startRow = rowRanges[rank].first + 1;
-      size_t rowsToReceive =
-          rowRanges[rank].second -
-          ((rank == mpiSize - 1) ? startRow - 1 : startRow);
-      for (size_t row = 0; row < rowsToReceive; ++row) {
-        MPI_Recv(assembled.getRowData(startRow + row), stride, MPI_UINT8_T,
-                 rank, static_cast<int>(row), MPI_COMM_WORLD,
-                 MPI_STATUS_IGNORE);
-      }
+  GridType assembled(fullRows, fullCols);
+  for (size_t row = 0; row < localRows - 1; ++row)
+    assembled.setRow(row,
+        static_cast<const typename GridType::CellType *>(game.getRowDataRaw(row)));
+  for (int rank = 1; rank < mpiSize; ++rank) {
+    size_t startRow = rowRanges[rank].first + 1;
+    size_t rowsToReceive =
+        rowRanges[rank].second -
+        ((rank == mpiSize - 1) ? startRow - 1 : startRow);
+    for (size_t row = 0; row < rowsToReceive; ++row) {
+      MPI_Recv(assembled.getRowData(startRow + row), stride,
+               mpiDatatype<typename GridType::CellType>(),
+               rank, static_cast<int>(row), MPI_COMM_WORLD,
+               MPI_STATUS_IGNORE);
     }
-    return assembled;
-  } else {
-    int stride = static_cast<int>(game.getStride());
-    BitGrid assembled(fullRows, fullCols);
-    for (size_t row = 0; row < localRows - 1; ++row)
-      assembled.setRow(row,
-          static_cast<const uint64_t *>(game.getRowDataRaw(row)));
-    for (int rank = 1; rank < mpiSize; ++rank) {
-      size_t startRow = rowRanges[rank].first + 1;
-      size_t rowsToReceive =
-          rowRanges[rank].second -
-          ((rank == mpiSize - 1) ? startRow - 1 : startRow);
-      for (size_t row = 0; row < rowsToReceive; ++row) {
-        MPI_Recv(assembled.getRowData(startRow + row), stride, MPI_UINT64_T,
-                 rank, static_cast<int>(row), MPI_COMM_WORLD,
-                 MPI_STATUS_IGNORE);
-      }
-    }
-    return assembled.toGrid();
   }
+  if constexpr (std::is_same_v<GridType, Grid>)
+    return assembled;
+  else
+    return assembled.toGrid();
 }
 
-// ── Templated grid-level MPI ────────────────────────────────────────────────
+Grid assembleFullGrid(GameOfLife &game, size_t fullRows, size_t fullCols,
+                      int mpiSize) {
+  if (game.getCellKind() == CellKind::Byte)
+    return assembleFullGridImpl<Grid>(game, fullRows, fullCols, mpiSize);
+  else
+    return assembleFullGridImpl<BitGrid>(game, fullRows, fullCols, mpiSize);
+}
+
+// ── Grid-level MPI ──────────────────────────────────────────────────────────
 
 template<typename GridType>
-void mpiSendGrid(const GridType &grid, int rank) {
+static void mpiSendGrid(const GridType &grid, int rank) {
   size_t rows = grid.getNumRows();
   size_t cols = grid.getNumCols();
   MPI_Send(&rows, 1, MPI_UNSIGNED_LONG, rank, 0, MPI_COMM_WORLD);
@@ -269,9 +263,6 @@ void mpiSendGrid(const GridType &grid, int rank) {
            mpiDatatype<typename GridType::CellType>(), rank, 0,
            MPI_COMM_WORLD);
 }
-
-template void mpiSendGrid<Grid>(const Grid &, int);
-template void mpiSendGrid<BitGrid>(const BitGrid &, int);
 
 template<typename GridType>
 void mpiReceiveGrid(GridType &grid, int rank) {

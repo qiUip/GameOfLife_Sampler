@@ -18,3 +18,13 @@ add_executable(golSimulator
 target_compile_options(golSimulator PRIVATE -march=native)
 target_link_libraries(golSimulator ${MPI_LIBRARIES} OpenMP::OpenMP_CXX)
 target_include_directories(golSimulator PRIVATE ${MPI_INCLUDE_PATH})
+
+# Optional CUDA support
+include(CheckLanguage)
+check_language(CUDA)
+if(CMAKE_CUDA_COMPILER)
+  enable_language(CUDA)
+  target_sources(golSimulator PRIVATE gol_cuda.cu)
+  target_compile_definitions(golSimulator PRIVATE GOL_CUDA=1)
+  set_target_properties(golSimulator PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+endif()

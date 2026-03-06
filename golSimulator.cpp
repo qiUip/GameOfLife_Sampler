@@ -1,11 +1,35 @@
 #include <chrono>
 #include <iostream>
 #include <memory>
+#include <type_traits>
 #include <mpi.h>
 #include <omp.h>
 
 #include "gol.h"
 #include "gol_utils.h"
+
+template<typename LocalGrid, typename Engine>
+static std::unique_ptr<GameOfLife> setupGame(Grid &grid, int mpiRank, int mpiSize) {
+  LocalGrid localGrid;
+  if (mpiSize > 1) {
+    if (mpiRank == 0) {
+      if constexpr (std::is_same_v<LocalGrid, Grid>) {
+        mpiSplitGrid(localGrid, grid, mpiSize);
+      } else {
+        LocalGrid fullGrid(grid);
+        mpiSplitGrid(localGrid, fullGrid, mpiSize);
+      }
+    } else {
+      mpiReceiveGrid(localGrid, 0);
+    }
+  } else {
+    if constexpr (std::is_same_v<LocalGrid, Grid>)
+      localGrid = std::move(grid);
+    else
+      localGrid = LocalGrid(grid);
+  }
+  return std::make_unique<Engine>(localGrid);
+}
 
 int main(int argc, char **argv) {
   int mpiRank, mpiSize;
@@ -31,20 +55,14 @@ int main(int argc, char **argv) {
 
   omp_set_num_threads(params.numThreads);
 
-  // Build local BitGrid — split across ranks if multi-rank
-  BitGrid localBitGrid;
-  if (mpiSize > 1) {
-    if (mpiRank == 0) {
-      BitGrid fullBitGrid(grid);
-      mpiSplitGrid(localBitGrid, fullBitGrid, mpiSize);
-    } else {
-      mpiReceiveGrid(localBitGrid, 0);
-    }
-  } else {
-    localBitGrid = BitGrid(grid);
-  }
-
-  auto game = std::make_unique<BitPackGameOfLife>(localBitGrid);
+  // Change these two type args to switch engine:
+  // auto game = setupGame<BitGrid, BitPackGameOfLife>(grid, mpiRank, mpiSize);
+#if GOL_CUDA
+  // auto game = setupGame<Grid, CUDAGameOfLife>(grid, mpiRank, mpiSize);
+  auto game = setupGame<BitGrid, CUDABitPackGameOfLife>(grid, mpiRank, mpiSize);
+#else
+  auto game = setupGame<Grid, SIMDGameOfLife>(grid, mpiRank, mpiSize);
+#endif
 
   // ── Single-rank path: pure OpenMP, no MPI communication ─────────────────
   if (mpiSize == 1) {
@@ -73,6 +91,7 @@ int main(int argc, char **argv) {
   for (unsigned int step = 0; step < params.steps; ++step) {
     game->takeStep();
     exchangeBoundaryRows(*game, mpiRank, mpiSize);
+    game->commitBoundaries();
 
     if (params.sleepTime > 0 && step < params.steps - 1) {
       if (mpiRank != 0) {

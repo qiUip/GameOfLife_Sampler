@@ -3,34 +3,32 @@
 #include <cstdlib>
 #include <omp.h>
 
-#if defined(__ARM_NEON__) || defined(__ARM_NEON)
-#  include <arm_neon.h>
-#endif
-
 // ── BitGrid implementation ──────────────────────────────────────────────────
 
 BitGrid::BitGrid(size_t rows, size_t cols)
-    : GridStorage(rows, cols, (cols + 63) / 64) {}
+    : GridStorage(rows, cols, (cols + 63) / 64),
+      wordsPerRow_((cols + 63) / 64) {}
 
 BitGrid::BitGrid(const Grid &g)
-    : GridStorage(g.getNumRows(), g.getNumCols(), (g.getNumCols() + 63) / 64) {
+    : GridStorage(g.getNumRows(), g.getNumCols(), (g.getNumCols() + 63) / 64),
+      wordsPerRow_((g.getNumCols() + 63) / 64) {
   for (size_t r = 0; r < rows_; ++r)
     for (size_t c = 0; c < cols_; ++c)
       if (g.getCell(r, c))
-        data_[r * getStride() + c / 64] |= uint64_t(1) << (c % 64);
+        data_[r * wordsPerRow_ + c / 64] |= uint64_t(1) << (c % 64);
 }
 
 Grid BitGrid::toGrid() const {
   Grid g(rows_, cols_);
   for (size_t r = 0; r < rows_; ++r)
     for (size_t c = 0; c < cols_; ++c)
-      g.setCell(r, c, (data_[r * getStride() + c / 64] >> (c % 64)) & 1);
+      g.setCell(r, c, (data_[r * wordsPerRow_ + c / 64] >> (c % 64)) & 1);
   return g;
 }
 
 size_t BitGrid::aliveCells() const {
   size_t count = 0;
-  for (size_t i = 0; i < rows_ * getStride(); ++i)
+  for (size_t i = 0; i < rows_ * wordsPerRow_; ++i)
     count += __builtin_popcountll(data_[i]);
   return count;
 }
@@ -65,13 +63,6 @@ static inline void sum9(uint64_t p1, uint64_t p0,
   o2    = t2 ^ carry;
   o3    = t2 & carry;
 }
-
-// ── NEON helper ─────────────────────────────────────────────────────────────
-#if defined(__ARM_NEON__) || defined(__ARM_NEON)
-static inline uint64x2_t vnot64(uint64x2_t x) {
-  return vreinterpretq_u64_u32(vmvnq_u32(vreinterpretq_u32_u64(x)));
-}
-#endif
 
 // ── BitPackGameOfLife implementation ────────────────────────────────────────
 
