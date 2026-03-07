@@ -102,7 +102,7 @@ template class CUDAEngine<uint64_t, BitGrid>;
 // Progression from CPU-like to GPU-optimised:
 //   1. golKernelSimple — one thread per cell, reads neighbours directly
 //                        from global memory.  No shared memory.
-//   2. golKernel       — shared memory tiling (128 × 8 tiles).  Each cell
+//   2. golKernelTile       — shared memory tiling (128 × 8 tiles).  Each cell
 //                        loaded from global memory once, reused from fast
 //                        on-chip shared memory up to 9 times.
 //   3. golKernelTile4  — same tile shape, uint32_t vectorised loads.
@@ -135,6 +135,28 @@ __device__ uint8_t golRule(const uint8_t *tile, unsigned int tileW,
 // columns, so adjacent threads access adjacent bytes — coalesced reads
 // and writes.
 //
+// Interior / border split:  On the CPU, boundary checks are eliminated at
+// compile time via templates (HasPrev, HasNext, etc.) — the compiler
+// generates separate code paths for border and interior rows.  We do the
+// same on the GPU by launching two separate kernels:
+//
+//   1. Interior kernel — covers cells at row [1, rows-2], col [1, cols-2].
+//      The launch grid is rounded down to full blocks, so every thread
+//      maps to a valid interior cell.  Zero conditionals: 8 loads +
+//      golRule + 1 store.  Remaining interior cells in partial blocks
+//      at the right/bottom edges are handled by the border kernel.
+//
+//   2. Border kernel — 1D launch over the perimeter cells (top/bottom rows,
+//      left/right columns) plus any interior cells in partial blocks not
+//      covered by the full-block interior launch.  Has boundary checks, but
+//      handles < 0.01% of cells for any reasonably sized grid.
+//
+// This split pays off here because the simple kernel evaluates boundary
+// conditionals per-cell (8 branches × 2.5 billion cells).  The tiled
+// kernels (§2–§3) don't need it — their boundary checks are per-tile
+// (once per 256-thread block), so the cost of a second kernel launch
+// outweighs the savings.
+//
 // Each cell in the grid may be read from global memory up to 9 times
 // (once as itself, up to 8 times as a neighbour of adjacent cells).
 // On a CPU, the hardware cache absorbs this reuse transparently —
@@ -152,7 +174,7 @@ static constexpr int SIMPLE_BLOCK_Y = 8;
 
 // Interior kernel — zero conditionals.  Every thread is guaranteed to map
 // to a valid interior cell (row in [1, rows-2], col in [1, cols-2]).
-// The launch grid uses floor() dimensions so only full blocks are launched.
+// The launch grid is rounded down to full blocks only.
 __global__ void golKernelSimpleInterior(const uint8_t *src, uint8_t *dst,
                                          unsigned int cols) {
   unsigned int col = 1 + blockIdx.x * blockDim.x + threadIdx.x;
@@ -306,13 +328,13 @@ void CUDASimpleGameOfLife::launchKernel(const uint8_t *src, uint8_t *dst) {
 //
 // Stores: 32 threads × 4-byte uint32_t = 128 contiguous bytes per warp.
 // Perfectly coalesced.
-
+//
 static constexpr int BYTE_BLOCK_X = 32;
 static constexpr int BYTE_BLOCK_Y = 8;
 static constexpr int BYTE_CELLS_PER_THREAD = 4;
 static constexpr int BYTE_TILE_COLS = BYTE_BLOCK_X * BYTE_CELLS_PER_THREAD; // 128
 
-__global__ void golKernel(const uint8_t *src, uint8_t *dst,
+__global__ void golKernelTile(const uint8_t *src, uint8_t *dst,
                           unsigned int rows, unsigned int cols) {
   extern __shared__ uint8_t tile[];
   const unsigned int tileW     = BYTE_TILE_COLS + 2;           // 130
@@ -362,13 +384,13 @@ void CUDATileGameOfLife::launchKernel(const uint8_t *src, uint8_t *dst) {
   dim3 grid((cols_ + BYTE_TILE_COLS - 1) / BYTE_TILE_COLS,
             (rows_ + BYTE_BLOCK_Y - 1) / BYTE_BLOCK_Y);
   size_t shmem = (BYTE_TILE_COLS + 2) * (BYTE_BLOCK_Y + 2) * sizeof(uint8_t);
-  golKernel<<<grid, block, shmem>>>(src, dst,
+  golKernelTile<<<grid, block, shmem>>>(src, dst,
       static_cast<unsigned int>(rows_), static_cast<unsigned int>(cols_));
   CUDA_CHECK(cudaGetLastError());
 }
 
 // ── 3. Tiled + uint32_t vectorised loads (cuda-tile4) ────────────────────
-// Same tile dimensions and compute phase as golKernel, but restructures
+// Same tile dimensions and compute phase as golKernelTile, but restructures
 // the load to use uint32_t reads for the 128 interior columns (4 bytes at
 // a time).  The left and right halo columns are loaded separately with
 // scalar reads.
@@ -378,7 +400,7 @@ void CUDATileGameOfLife::launchKernel(const uint8_t *src, uint8_t *dst) {
 // reduction needed for tileW = 130 in the flat-load kernels.  Within a
 // warp, 32 threads each load one uint32_t from consecutive addresses →
 // 128 contiguous bytes, perfectly coalesced with no warp-straddling.
-
+//
 __global__ void golKernelTile4(const uint8_t *src, uint8_t *dst,
                                 unsigned int rows, unsigned int cols) {
   extern __shared__ uint8_t tile[];
@@ -432,7 +454,7 @@ __global__ void golKernelTile4(const uint8_t *src, uint8_t *dst,
 
   __syncthreads();
 
-  // ── Phase 2: compute (identical to golKernel) ──
+  // ── Phase 2: compute (identical to golKernelTile) ──
   unsigned int row     = blockIdx.y * blockDim.y + threadIdx.y;
   unsigned int baseCol = blockIdx.x * BYTE_TILE_COLS + threadIdx.x * 4;
   unsigned int tx      = threadIdx.x * 4 + 1;
