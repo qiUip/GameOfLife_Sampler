@@ -251,12 +251,6 @@ void SIMDGameOfLife::takeStep() {
   currentGrid_.swap(newGrid_);
 }
 
-Grid SIMDGameOfLife::getGrid() const {
-  Grid g(rows_, cols_);
-  std::memcpy(g.getData(), currentGrid_.getData(), rows_ * cols_);
-  return g;
-}
-
 void *SIMDGameOfLife::getRowDataRaw(size_t row) {
   return currentGrid_.getRowData(row);
 }

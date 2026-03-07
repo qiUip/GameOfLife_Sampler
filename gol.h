@@ -86,7 +86,6 @@ public:
   BitGrid(size_t rows, size_t cols);
   BitGrid(size_t rows, size_t cols, unsigned int alive, std::mt19937 &rng);
   explicit BitGrid(const Grid &g);
-  Grid toGrid() const;
 
   size_t getStride() const { return wordsPerRow_; }
 
@@ -97,7 +96,13 @@ public:
     std::memcpy(data_ + row * wordsPerRow_, src, wordsPerRow_ * sizeof(CellType));
   }
 
+  bool getCell(size_t row, size_t col) const {
+    return (data_[row * wordsPerRow_ + col / 64] >> (col % 64)) & 1;
+  }
+
   size_t aliveCells() const;
+  void printGrid() const;
+  void writeToFile(const std::string &filename) const;
 
 private:
   size_t wordsPerRow_ = 0;
@@ -111,7 +116,6 @@ class GameOfLife{
 public:
   virtual ~GameOfLife() = default;
   virtual void takeStep() = 0;
-  virtual Grid getGrid() const = 0;
 
   size_t getNumRows() const { return rows_; }
   size_t getNumCols() const { return cols_; }
@@ -121,6 +125,8 @@ public:
   virtual CellKind getCellKind() const = 0;
   virtual void commitBoundaries() {}
   virtual void sync() {}
+  virtual void printGrid() const {}
+  virtual void writeToFile(const std::string &filename) const { (void)filename; }
 
 protected:
   size_t rows_, cols_;
@@ -132,10 +138,11 @@ class SimpleGameOfLife : public GameOfLife{
 public:
   explicit SimpleGameOfLife(Grid &grid);
   void takeStep() override;
-  Grid getGrid() const override;
   void  *getRowDataRaw(size_t row) override;
   size_t getStride() const override;
   CellKind getCellKind() const override;
+  void printGrid() const override { currentGrid_.printGrid(); }
+  void writeToFile(const std::string &f) const override { currentGrid_.writeToFile(f); }
 
 private:
   Grid currentGrid_;
@@ -148,10 +155,11 @@ class SIMDGameOfLife : public GameOfLife{
 public:
   explicit SIMDGameOfLife(Grid &grid);
   void takeStep() override;
-  Grid getGrid() const override;
   void  *getRowDataRaw(size_t row) override;
   size_t getStride() const override;
   CellKind getCellKind() const override;
+  void printGrid() const override { currentGrid_.printGrid(); }
+  void writeToFile(const std::string &f) const override { currentGrid_.writeToFile(f); }
 
 private:
   Grid currentGrid_;
@@ -165,10 +173,11 @@ public:
   explicit BitPackGameOfLife(Grid &grid);
   explicit BitPackGameOfLife(BitGrid &grid);
   void takeStep() override;
-  Grid getGrid() const override;
   void  *getRowDataRaw(size_t row) override;
   size_t getStride() const override;
   CellKind getCellKind() const override;
+  void printGrid() const override { current_.printGrid(); }
+  void writeToFile(const std::string &f) const override { current_.writeToFile(f); }
 
 private:
   BitGrid current_, next_;
@@ -182,42 +191,51 @@ private:
 // Base template: owns device buffers, handles memcpy boilerplate.
 // Derived classes only override launchKernel() and getCellKind().
 template<typename CellT, typename HostGridT>
-class CUDAEngineBase : public GameOfLife {
+class CUDAEngine : public GameOfLife {
 public:
-  ~CUDAEngineBase();
+  ~CUDAEngine();
   void takeStep() override;
-  Grid getGrid() const override;
   void  *getRowDataRaw(size_t row) override;
   size_t getStride() const override;
   void commitBoundaries() override;
   void sync() override;
+  void printGrid() const override;
+  void writeToFile(const std::string &filename) const override;
 
 protected:
-  explicit CUDAEngineBase(HostGridT hostGrid);
+  explicit CUDAEngine(HostGridT hostGrid);
   virtual void launchKernel(const CellT *src, CellT *dst) = 0;
 
   CellT *d_current_, *d_next_;
-  HostGridT hostGrid_;
+  mutable HostGridT hostGrid_;
   size_t stride_;
 };
 
-class CUDAGameOfLife : public CUDAEngineBase<uint8_t, Grid> {
+class CUDASimpleGameOfLife : public CUDAEngine<uint8_t, Grid> {
 public:
-  explicit CUDAGameOfLife(Grid &grid);
+  explicit CUDASimpleGameOfLife(Grid &grid);
   CellKind getCellKind() const override;
 protected:
   void launchKernel(const uint8_t *src, uint8_t *dst) override;
 };
 
-class CUDAColBatchGameOfLife : public CUDAEngineBase<uint8_t, Grid> {
+class CUDATileGameOfLife : public CUDAEngine<uint8_t, Grid> {
 public:
-  explicit CUDAColBatchGameOfLife(Grid &grid);
+  explicit CUDATileGameOfLife(Grid &grid);
   CellKind getCellKind() const override;
 protected:
   void launchKernel(const uint8_t *src, uint8_t *dst) override;
 };
 
-class CUDABitPackGameOfLife : public CUDAEngineBase<uint64_t, BitGrid> {
+class CUDATile4GameOfLife : public CUDAEngine<uint8_t, Grid> {
+public:
+  explicit CUDATile4GameOfLife(Grid &grid);
+  CellKind getCellKind() const override;
+protected:
+  void launchKernel(const uint8_t *src, uint8_t *dst) override;
+};
+
+class CUDABitPackGameOfLife : public CUDAEngine<uint64_t, BitGrid> {
 public:
   explicit CUDABitPackGameOfLife(Grid &grid);
   explicit CUDABitPackGameOfLife(BitGrid &grid);

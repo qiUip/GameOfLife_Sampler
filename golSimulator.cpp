@@ -1,32 +1,22 @@
 #include <chrono>
 #include <iostream>
 #include <memory>
-#include <type_traits>
 #include <mpi.h>
 #include <omp.h>
 
 #include "gol.h"
 #include "gol_utils.h"
 
-template<typename LocalGrid, typename Engine>
-static std::unique_ptr<GameOfLife> setupGame(Grid &grid, int mpiRank, int mpiSize) {
-  LocalGrid localGrid;
+template<typename Engine, typename GridType>
+static std::unique_ptr<GameOfLife> setupGame(GridType &fullGrid, int mpiRank, int mpiSize) {
+  GridType localGrid;
   if (mpiSize > 1) {
-    if (mpiRank == 0) {
-      if constexpr (std::is_same_v<LocalGrid, Grid>) {
-        mpiSplitGrid(localGrid, grid, mpiSize);
-      } else {
-        LocalGrid fullGrid(grid);
-        mpiSplitGrid(localGrid, fullGrid, mpiSize);
-      }
-    } else {
-      mpiReceiveGrid(localGrid, 0);
-    }
-  } else {
-    if constexpr (std::is_same_v<LocalGrid, Grid>)
-      localGrid = std::move(grid);
+    if (mpiRank == 0)
+      mpiSplitGrid(localGrid, fullGrid, mpiSize);
     else
-      localGrid = LocalGrid(grid);
+      mpiReceiveGrid(localGrid, 0);
+  } else {
+    localGrid = std::move(fullGrid);
   }
   return std::make_unique<Engine>(localGrid);
 }
@@ -59,35 +49,42 @@ int main(int argc, char **argv) {
   std::unique_ptr<GameOfLife> game;
   switch (params.engine) {
   case ENGINE_SIMPLE:
-    game = setupGame<Grid, SimpleGameOfLife>(grid, mpiRank, mpiSize);
+    game = setupGame<SimpleGameOfLife>(grid, mpiRank, mpiSize);
     break;
   case ENGINE_SIMD:
-    game = setupGame<Grid, SIMDGameOfLife>(grid, mpiRank, mpiSize);
+    game = setupGame<SIMDGameOfLife>(grid, mpiRank, mpiSize);
     break;
   case ENGINE_BITPACK:
-    if (params.randomInit && mpiSize == 1) {
-      std::mt19937 rng(params.seed);
-      BitGrid bg(params.fullGridRows, params.fullGridColumns, params.alive, rng);
-      game = std::make_unique<BitPackGameOfLife>(bg);
-    } else {
-      game = setupGame<BitGrid, BitPackGameOfLife>(grid, mpiRank, mpiSize);
-    }
-    break;
 #if GOL_CUDA
-  case ENGINE_CUDA:
-    game = setupGame<Grid, CUDAGameOfLife>(grid, mpiRank, mpiSize);
-    break;
-  case ENGINE_CUDA_COLBATCH:
-    game = setupGame<Grid, CUDAColBatchGameOfLife>(grid, mpiRank, mpiSize);
-    break;
   case ENGINE_CUDA_BITPACK:
-    if (params.randomInit && mpiSize == 1) {
-      std::mt19937 rng(params.seed);
-      BitGrid bg(params.fullGridRows, params.fullGridColumns, params.alive, rng);
-      game = std::make_unique<CUDABitPackGameOfLife>(bg);
-    } else {
-      game = setupGame<BitGrid, CUDABitPackGameOfLife>(grid, mpiRank, mpiSize);
+#endif
+  {
+    BitGrid bg;
+    if (mpiRank == 0) {
+      if (params.randomInit) {
+        std::mt19937 rng(params.seed);
+        bg = BitGrid(params.fullGridRows, params.fullGridColumns, params.alive, rng);
+      } else {
+        bg = BitGrid(grid);
+      }
     }
+#if GOL_CUDA
+    if (params.engine == ENGINE_CUDA_BITPACK)
+      game = setupGame<CUDABitPackGameOfLife>(bg, mpiRank, mpiSize);
+    else
+#endif
+      game = setupGame<BitPackGameOfLife>(bg, mpiRank, mpiSize);
+    break;
+  }
+#if GOL_CUDA
+  case ENGINE_CUDA_SIMPLE:
+    game = setupGame<CUDASimpleGameOfLife>(grid, mpiRank, mpiSize);
+    break;
+  case ENGINE_CUDA_TILE:
+    game = setupGame<CUDATileGameOfLife>(grid, mpiRank, mpiSize);
+    break;
+  case ENGINE_CUDA_TILE4:
+    game = setupGame<CUDATile4GameOfLife>(grid, mpiRank, mpiSize);
     break;
 #endif
   default:
@@ -104,18 +101,16 @@ int main(int argc, char **argv) {
     for (unsigned int step = 0; step < params.steps; ++step) {
       game->takeStep();
       if (params.sleepTime > 0 && step < params.steps - 1)
-        printStep(game->getGrid(), "Generation:", step + 1, params.sleepTime);
+        printStep(*game, "Generation:", step + 1, params.sleepTime);
     }
 
     game->sync();
     double elapsed = std::chrono::duration<double>(
         std::chrono::high_resolution_clock::now() - t_start).count();
-    if (params.sleepTime >= 0 || !params.outfile.empty()) {
-      const Grid finalGrid = game->getGrid();
-      if (params.sleepTime >= 0) printStep(finalGrid, "Generation:", params.steps);
-      if (!params.outfile.empty())
-        finalGrid.writeToFile(params.outfile);
-    }
+    if (params.sleepTime >= 0)
+      printStep(*game, "Generation:", params.steps);
+    if (!params.outfile.empty())
+      game->writeToFile(params.outfile);
     std::cout << "Game completed in " << elapsed << " seconds\n";
     MPI_Finalize();
     return EXIT_SUCCESS;
@@ -133,9 +128,8 @@ int main(int argc, char **argv) {
       if (mpiRank != 0) {
         assembleSend(*game, mpiRank, mpiSize);
       } else {
-        Grid fullGrid = assembleFullGrid(*game, params.fullGridRows,
-                                         params.fullGridColumns, mpiSize);
-        printStep(fullGrid, "Generation:", step + 1, params.sleepTime);
+        assembleOutput(*game, params.fullGridRows, params.fullGridColumns,
+                       mpiSize, params.sleepTime, step + 1);
       }
     }
   }
@@ -147,11 +141,8 @@ int main(int argc, char **argv) {
   if (mpiRank != 0) {
     assembleSend(*game, mpiRank, mpiSize);
   } else {
-    Grid finalGrid = assembleFullGrid(*game, params.fullGridRows,
-                                      params.fullGridColumns, mpiSize);
-    if (params.sleepTime >= 0) printStep(finalGrid, "Generation:", params.steps);
-    if (!params.outfile.empty())
-      finalGrid.writeToFile(params.outfile);
+    assembleOutput(*game, params.fullGridRows, params.fullGridColumns,
+                   mpiSize, params.sleepTime, params.steps, params.outfile);
     std::cout << "Game completed in " << elapsed << " seconds\n";
   }
 

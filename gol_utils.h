@@ -2,10 +2,12 @@
 #define GOL_UTILS_H
 
 #include "gol.h"
+#include <iostream>
 #include <string>
 #include <vector>
+#include <unistd.h>
 
-enum Engine : int { ENGINE_SIMD = 0, ENGINE_BITPACK, ENGINE_CUDA, ENGINE_CUDA_COLBATCH, ENGINE_CUDA_BITPACK, ENGINE_SIMPLE };
+enum Engine : int { ENGINE_SIMD = 0, ENGINE_BITPACK, ENGINE_CUDA_TILE, ENGINE_CUDA_TILE4, ENGINE_CUDA_SIMPLE, ENGINE_CUDA_BITPACK, ENGINE_SIMPLE };
 
 struct SimParams {
   unsigned int steps = 1;
@@ -24,15 +26,30 @@ bool initSimulation(int argc, char **argv, Grid &grid, SimParams &params);
 
 void printHelp();
 void printLine(size_t length);
-void printStep(const Grid &grid, const std::string &label, int value,
-               float sleepTime = 0);
+
+template<typename T>
+void printStep(const T &grid, const std::string &label, int value,
+               float sleepTime = 0) {
+  std::cout << label << " " << value << "\n";
+  printLine(grid.getNumCols());
+  grid.printGrid();
+  printLine(grid.getNumCols());
+  if (sleepTime > 0) {
+    std::cout.flush();
+    std::cout << "\033[" << grid.getNumRows() + 3 << "A";
+    usleep(static_cast<unsigned int>(sleepTime * 1.0e6));
+  } else {
+    std::cout.flush();
+  }
+}
 
 // MPI utilities
 void mpiBroadcastSimInfo(SimParams &params);
 void exchangeBoundaryRows(GameOfLife &game, int mpiRank, int mpiSize);
 void assembleSend(GameOfLife &game, int mpiRank, int mpiSize);
-Grid assembleFullGrid(GameOfLife &game, size_t fullRows, size_t fullCols,
-                      int mpiSize);
+void assembleOutput(GameOfLife &game, size_t fullRows, size_t fullCols,
+                    int mpiSize, float sleepTime, int step,
+                    const std::string &outfile = "");
 
 template<typename GridType> void mpiReceiveGrid(GridType &grid, int rank);
 template<typename GridType> void mpiSplitGrid(GridType &localGrid,

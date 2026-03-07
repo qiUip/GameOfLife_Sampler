@@ -1,6 +1,8 @@
 #include "gol.h"
 
 #include <cstdlib>
+#include <fstream>
+#include <iostream>
 #include <omp.h>
 
 // ── BitGrid implementation ──────────────────────────────────────────────────
@@ -36,19 +38,35 @@ BitGrid::BitGrid(const Grid &g)
         data_[r * wordsPerRow_ + c / 64] |= uint64_t(1) << (c % 64);
 }
 
-Grid BitGrid::toGrid() const {
-  Grid g(rows_, cols_);
-  for (size_t r = 0; r < rows_; ++r)
-    for (size_t c = 0; c < cols_; ++c)
-      g.setCell(r, c, (data_[r * wordsPerRow_ + c / 64] >> (c % 64)) & 1);
-  return g;
-}
-
 size_t BitGrid::aliveCells() const {
   size_t count = 0;
   for (size_t i = 0; i < rows_ * wordsPerRow_; ++i)
     count += __builtin_popcountll(data_[i]);
   return count;
+}
+
+void BitGrid::printGrid() const {
+  for (size_t row = 0; row < rows_; ++row) {
+    for (size_t col = 0; col < cols_; ++col) {
+      std::cout << (getCell(row, col) ? "o" : "-") << " ";
+    }
+    std::cout << "\n";
+  }
+}
+
+void BitGrid::writeToFile(const std::string &filename) const {
+  std::ofstream file(filename);
+  if (!file.is_open()) {
+    std::cerr << "Error: Cannot write to file " << filename << "\n";
+    return;
+  }
+  for (size_t row = 0; row < rows_; ++row) {
+    for (size_t col = 0; col < cols_; ++col) {
+      file << (getCell(row, col) ? "o" : "-");
+      if (col < cols_ - 1) file << " ";
+    }
+    file << "\n";
+  }
 }
 
 // ── Bit-parallel helpers ─────────────────────────────────────────────────────
@@ -142,8 +160,6 @@ void BitPackGameOfLife::takeStep() {
   std::free(zeroRow);
   current_.swap(next_);
 }
-
-Grid BitPackGameOfLife::getGrid() const { return current_.toGrid(); }
 
 void *BitPackGameOfLife::getRowDataRaw(size_t row) {
   return current_.getRowData(row);

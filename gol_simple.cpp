@@ -45,12 +45,6 @@ void SimpleGameOfLife::takeStep() {
   currentGrid_.swap(newGrid_);
 }
 
-Grid SimpleGameOfLife::getGrid() const {
-  Grid g(rows_, cols_);
-  std::memcpy(g.getData(), currentGrid_.getData(), rows_ * cols_);
-  return g;
-}
-
 void *SimpleGameOfLife::getRowDataRaw(size_t row) {
   return currentGrid_.getRowData(row);
 }

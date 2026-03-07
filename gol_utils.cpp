@@ -63,7 +63,7 @@ void printHelp() {
       << "  -p, --print <float>          Print each step (delay in seconds)\n"
       << "  -o, --output <filename>.txt  Output file name\n"
       << "  -n, --numthreads <int>       Number of OpenMP threads\n"
-      << "  -e, --engine <name>          Engine: simple, simd, bitpack, cuda, cuda-colbatch, cuda-bitpack\n"
+      << "  -e, --engine <name>          Engine: simple, simd, bitpack, cuda-simple, cuda-tile, cuda-tile4, cuda-bitpack\n"
       << "  -h, --help                   Print this help message\n";
 }
 
@@ -71,21 +71,6 @@ void printLine(size_t length) {
   for (size_t i = 0; i < length; i++)
     std::cout << "==";
   std::cout << "\n";
-}
-
-void printStep(const Grid &grid, const std::string &label, int value,
-               float sleepTime) {
-  std::cout << label << " " << value << "\n";
-  printLine(grid.getNumCols());
-  grid.printGrid();
-  printLine(grid.getNumCols());
-  if (sleepTime > 0) {
-    std::cout.flush();
-    std::cout << "\033[" << grid.getNumRows() + 3 << "A";
-    usleep(static_cast<useconds_t>(sleepTime * 1.0e6));
-  } else {
-    std::cout.flush();
-  }
 }
 
 bool initSimulation(int argc, char **argv, Grid &grid, SimParams &params) {
@@ -136,8 +121,9 @@ bool initSimulation(int argc, char **argv, Grid &grid, SimParams &params) {
       if      (eng == "simple")        params.engine = ENGINE_SIMPLE;
       else if (eng == "simd")         params.engine = ENGINE_SIMD;
       else if (eng == "bitpack")      params.engine = ENGINE_BITPACK;
-      else if (eng == "cuda")         params.engine = ENGINE_CUDA;
-      else if (eng == "cuda-colbatch") params.engine = ENGINE_CUDA_COLBATCH;
+      else if (eng == "cuda-tile")    params.engine = ENGINE_CUDA_TILE;
+      else if (eng == "cuda-tile4")   params.engine = ENGINE_CUDA_TILE4;
+      else if (eng == "cuda-simple")  params.engine = ENGINE_CUDA_SIMPLE;
       else if (eng == "cuda-bitpack") params.engine = ENGINE_CUDA_BITPACK;
       else {
         std::cerr << "Error: unknown engine '" << eng << "'\n";
@@ -172,7 +158,7 @@ bool initSimulation(int argc, char **argv, Grid &grid, SimParams &params) {
     params.randomInit = true;
     if (!seedProvided) params.seed = std::random_device()();
 
-    // Bitpack engines construct BitGrid directly — skip 2.5GB Grid allocation
+    // Bitpack engines construct BitGrid directly — skip Grid allocation
     bool needsGrid = (params.engine != ENGINE_BITPACK);
 #if GOL_CUDA
     needsGrid = needsGrid && (params.engine != ENGINE_CUDA_BITPACK);
@@ -245,8 +231,8 @@ void assembleSend(GameOfLife &game, int mpiRank, int mpiSize) {
 }
 
 template<typename GridType>
-static Grid assembleFullGridImpl(GameOfLife &game, size_t fullRows,
-                                 size_t fullCols, int mpiSize) {
+static GridType assembleFullGridImpl(GameOfLife &game, size_t fullRows,
+                                     size_t fullCols, int mpiSize) {
   size_t localRows = game.getNumRows();
   int stride = static_cast<int>(game.getStride());
   const auto rowRanges = getRowRanges(mpiSize, fullRows);
@@ -267,18 +253,26 @@ static Grid assembleFullGridImpl(GameOfLife &game, size_t fullRows,
                MPI_STATUS_IGNORE);
     }
   }
-  if constexpr (std::is_same_v<GridType, Grid>)
-    return assembled;
-  else
-    return assembled.toGrid();
+  return assembled;
 }
 
-Grid assembleFullGrid(GameOfLife &game, size_t fullRows, size_t fullCols,
-                      int mpiSize) {
+template<typename GridType>
+static void assembleOutputImpl(GameOfLife &game, size_t fullRows,
+                               size_t fullCols, int mpiSize,
+                               float sleepTime, int step,
+                               const std::string &outfile) {
+  GridType grid = assembleFullGridImpl<GridType>(game, fullRows, fullCols, mpiSize);
+  if (sleepTime >= 0) printStep(grid, "Generation:", step, sleepTime);
+  if (!outfile.empty()) grid.writeToFile(outfile);
+}
+
+void assembleOutput(GameOfLife &game, size_t fullRows, size_t fullCols,
+                    int mpiSize, float sleepTime, int step,
+                    const std::string &outfile) {
   if (game.getCellKind() == CellKind::Byte)
-    return assembleFullGridImpl<Grid>(game, fullRows, fullCols, mpiSize);
+    assembleOutputImpl<Grid>(game, fullRows, fullCols, mpiSize, sleepTime, step, outfile);
   else
-    return assembleFullGridImpl<BitGrid>(game, fullRows, fullCols, mpiSize);
+    assembleOutputImpl<BitGrid>(game, fullRows, fullCols, mpiSize, sleepTime, step, outfile);
 }
 
 // ── Grid-level MPI ──────────────────────────────────────────────────────────
