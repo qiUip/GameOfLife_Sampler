@@ -83,9 +83,6 @@ int main(int argc, char **argv) {
   case ENGINE_CUDA_TILE:
     game = setupGame<CUDATileGameOfLife>(grid, mpiRank, mpiSize);
     break;
-  case ENGINE_CUDA_TILE4:
-    game = setupGame<CUDATile4GameOfLife>(grid, mpiRank, mpiSize);
-    break;
 #endif
   default:
     if (mpiRank == 0)

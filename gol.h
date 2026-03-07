@@ -227,14 +227,6 @@ protected:
   void launchKernel(const uint8_t *src, uint8_t *dst) override;
 };
 
-class CUDATile4GameOfLife : public CUDAEngine<uint8_t, Grid> {
-public:
-  explicit CUDATile4GameOfLife(Grid &grid);
-  CellKind getCellKind() const override;
-protected:
-  void launchKernel(const uint8_t *src, uint8_t *dst) override;
-};
-
 class CUDABitPackGameOfLife : public CUDAEngine<uint64_t, BitGrid> {
 public:
   explicit CUDABitPackGameOfLife(Grid &grid);

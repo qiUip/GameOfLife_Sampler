@@ -63,7 +63,7 @@ void printHelp() {
       << "  -p, --print <float>          Print each step (delay in seconds)\n"
       << "  -o, --output <filename>.txt  Output file name\n"
       << "  -n, --numthreads <int>       Number of OpenMP threads\n"
-      << "  -e, --engine <name>          Engine: simple, simd, bitpack, cuda-simple, cuda-tile, cuda-tile4, cuda-bitpack\n"
+      << "  -e, --engine <name>          Engine: simple, simd, bitpack, cuda-simple, cuda-tile, cuda-bitpack\n"
       << "  -h, --help                   Print this help message\n";
 }
 
@@ -122,7 +122,6 @@ bool initSimulation(int argc, char **argv, Grid &grid, SimParams &params) {
       else if (eng == "simd")         params.engine = ENGINE_SIMD;
       else if (eng == "bitpack")      params.engine = ENGINE_BITPACK;
       else if (eng == "cuda-tile")    params.engine = ENGINE_CUDA_TILE;
-      else if (eng == "cuda-tile4")   params.engine = ENGINE_CUDA_TILE4;
       else if (eng == "cuda-simple")  params.engine = ENGINE_CUDA_SIMPLE;
       else if (eng == "cuda-bitpack") params.engine = ENGINE_CUDA_BITPACK;
       else {

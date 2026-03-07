@@ -7,7 +7,7 @@
 #include <vector>
 #include <unistd.h>
 
-enum Engine : int { ENGINE_SIMD = 0, ENGINE_BITPACK, ENGINE_CUDA_TILE, ENGINE_CUDA_TILE4, ENGINE_CUDA_SIMPLE, ENGINE_CUDA_BITPACK, ENGINE_SIMPLE };
+enum Engine : int { ENGINE_SIMD = 0, ENGINE_BITPACK, ENGINE_CUDA_TILE, ENGINE_CUDA_SIMPLE, ENGINE_CUDA_BITPACK, ENGINE_SIMPLE };
 
 struct SimParams {
   unsigned int steps = 1;

@@ -96,18 +96,15 @@ template class CUDAEngine<uint8_t, Grid>;
 template class CUDAEngine<uint64_t, BitGrid>;
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Byte-per-cell kernels — three engines in learning progression
+// Byte-per-cell kernels — two engines
 // ═══════════════════════════════════════════════════════════════════════════
 //
-// Progression from CPU-like to GPU-optimised:
 //   1. golKernelSimple — one thread per cell, reads neighbours directly
 //                        from global memory.  No shared memory.
-//   2. golKernelTile       — shared memory tiling (128 × 8 tiles).  Each cell
-//                        loaded from global memory once, reused from fast
-//                        on-chip shared memory up to 9 times.
-//   3. golKernelTile4  — same tile shape, uint32_t vectorised loads.
+//   2. golKernelTile   — shared memory tiling (128 × 8 tiles) with uint32_t
+//                        vectorised loads and stores.
 //
-// All three kernels use the same branch-free GoL rule.
+// Both kernels use the same branch-free GoL rule.
 
 // Branch-free GoL rule: count 8 neighbours, apply birth/survival.
 // Used directly by the tiled kernels (from shared memory tile), and as the
@@ -326,8 +323,24 @@ void CUDASimpleGameOfLife::launchKernel(const uint8_t *src, uint8_t *dst) {
 // Tile: (128 + 2) × (8 + 2) = 1,300 bytes shared memory (incl. halo).
 // Grid: 2D launch, one block per tile — all tiles run concurrently.
 //
-// Stores: 32 threads × 4-byte uint32_t = 128 contiguous bytes per warp.
-// Perfectly coalesced.
+// Loads: uint32_t vectorised reads for the 128 interior tile columns
+// (4 bytes at a time), with scalar reads for the 2 halo columns.
+// 128 cols / 4 = 32 words per row × 10 rows = 320 words total.
+// Division by 32 (power of 2) compiles to a shift, avoiding the Barrett
+// reduction needed for tileW = 130 in a flat byte-by-byte load.  Within
+// a warp, 32 threads each load one uint32_t from consecutive addresses →
+// 128 contiguous bytes, perfectly coalesced with no warp-straddling.
+//
+// Stores: each thread packs its 4 results into a uint32_t and writes it
+// with a single 4-byte store.  Within a warp, 32 threads × 4 bytes =
+// 128 contiguous bytes — exactly one cache line, perfectly coalesced.
+// Byte stores cannot merge into a single wide transaction the way a
+// uint32_t store does, so the packing is critical for write throughput.
+//
+// Boundary handling: the last tile column (when cols is not a multiple of
+// 128) falls through to byte-by-byte load and store paths.  This affects
+// only 1 out of ceil(cols/128) tile columns, so the branch cost is
+// negligible.
 //
 static constexpr int BYTE_BLOCK_X = 32;
 static constexpr int BYTE_BLOCK_Y = 8;
@@ -335,73 +348,6 @@ static constexpr int BYTE_CELLS_PER_THREAD = 4;
 static constexpr int BYTE_TILE_COLS = BYTE_BLOCK_X * BYTE_CELLS_PER_THREAD; // 128
 
 __global__ void golKernelTile(const uint8_t *src, uint8_t *dst,
-                          unsigned int rows, unsigned int cols) {
-  extern __shared__ uint8_t tile[];
-  const unsigned int tileW     = BYTE_TILE_COLS + 2;           // 130
-  const unsigned int tileH     = blockDim.y + 2;               // 10
-  const unsigned int tileSize  = tileW * tileH;                // 1300
-  const unsigned int tid       = threadIdx.y * blockDim.x + threadIdx.x;
-  const unsigned int blockSize = blockDim.x * blockDim.y;      // 256
-
-  // Top-left corner of the tile in global coordinates (including halo).
-  const int gc0 = (int)(blockIdx.x * BYTE_TILE_COLS) - 1;
-  const int gr0 = (int)(blockIdx.y * blockDim.y) - 1;
-
-  // ── Cooperative tile load (flat byte-by-byte) ──
-  for (unsigned int i = tid; i < tileSize; i += blockSize) {
-    int gr = gr0 + (int)(i / tileW);
-    int gc = gc0 + (int)(i % tileW);
-    tile[i] = (gr >= 0 && (unsigned)gr < rows && gc >= 0 && (unsigned)gc < cols)
-                ? src[(unsigned)gr * cols + (unsigned)gc] : 0;
-  }
-
-  __syncthreads();
-
-  // ── Compute ──
-  unsigned int row     = blockIdx.y * blockDim.y + threadIdx.y;
-  unsigned int baseCol = blockIdx.x * BYTE_TILE_COLS + threadIdx.x * 4;
-  unsigned int tx      = threadIdx.x * 4 + 1;
-  unsigned int ty      = threadIdx.y + 1;
-
-  if (row < rows && baseCol + 3 < cols) {
-    uint32_t result = 0;
-    for (int k = 0; k < 4; k++)
-      result |= (unsigned)golRule(tile, tileW, tx + k, ty) << (k * 8);
-    *reinterpret_cast<uint32_t*>(&dst[row * cols + baseCol]) = result;
-  } else if (row < rows && baseCol < cols) {
-    for (int k = 0; k < 4 && baseCol + k < cols; k++)
-      dst[row * cols + baseCol + k] = golRule(tile, tileW, tx + k, ty);
-  }
-}
-
-CUDATileGameOfLife::CUDATileGameOfLife(Grid &grid)
-    : CUDAEngine(std::move(grid)) {}
-
-CellKind CUDATileGameOfLife::getCellKind() const { return CellKind::Byte; }
-
-void CUDATileGameOfLife::launchKernel(const uint8_t *src, uint8_t *dst) {
-  dim3 block(BYTE_BLOCK_X, BYTE_BLOCK_Y);
-  dim3 grid((cols_ + BYTE_TILE_COLS - 1) / BYTE_TILE_COLS,
-            (rows_ + BYTE_BLOCK_Y - 1) / BYTE_BLOCK_Y);
-  size_t shmem = (BYTE_TILE_COLS + 2) * (BYTE_BLOCK_Y + 2) * sizeof(uint8_t);
-  golKernelTile<<<grid, block, shmem>>>(src, dst,
-      static_cast<unsigned int>(rows_), static_cast<unsigned int>(cols_));
-  CUDA_CHECK(cudaGetLastError());
-}
-
-// ── 3. Tiled + uint32_t vectorised loads (cuda-tile4) ────────────────────
-// Same tile dimensions and compute phase as golKernelTile, but restructures
-// the load to use uint32_t reads for the 128 interior columns (4 bytes at
-// a time).  The left and right halo columns are loaded separately with
-// scalar reads.
-//
-// Interior: 128 cols / 4 = 32 words per row × 10 rows = 320 words.
-// Division by 32 (power of 2) compiles to a shift, avoiding the Barrett
-// reduction needed for tileW = 130 in the flat-load kernels.  Within a
-// warp, 32 threads each load one uint32_t from consecutive addresses →
-// 128 contiguous bytes, perfectly coalesced with no warp-straddling.
-//
-__global__ void golKernelTile4(const uint8_t *src, uint8_t *dst,
                                 unsigned int rows, unsigned int cols) {
   extern __shared__ uint8_t tile[];
   const unsigned int tileW     = BYTE_TILE_COLS + 2;           // 130
@@ -454,7 +400,11 @@ __global__ void golKernelTile4(const uint8_t *src, uint8_t *dst,
 
   __syncthreads();
 
-  // ── Phase 2: compute (identical to golKernelTile) ──
+  // ── Phase 2: compute ──
+  // Fast path: pack 4 results into uint32_t, single coalesced 4-byte store.
+  // Slow path: byte-by-byte for the last tile column if cols % 128 != 0.
+  // The branch is warp-uniform for all but the rightmost tile column,
+  // so it's essentially free.
   unsigned int row     = blockIdx.y * blockDim.y + threadIdx.y;
   unsigned int baseCol = blockIdx.x * BYTE_TILE_COLS + threadIdx.x * 4;
   unsigned int tx      = threadIdx.x * 4 + 1;
@@ -471,23 +421,23 @@ __global__ void golKernelTile4(const uint8_t *src, uint8_t *dst,
   }
 }
 
-CUDATile4GameOfLife::CUDATile4GameOfLife(Grid &grid)
+CUDATileGameOfLife::CUDATileGameOfLife(Grid &grid)
     : CUDAEngine(std::move(grid)) {}
 
-CellKind CUDATile4GameOfLife::getCellKind() const { return CellKind::Byte; }
+CellKind CUDATileGameOfLife::getCellKind() const { return CellKind::Byte; }
 
-void CUDATile4GameOfLife::launchKernel(const uint8_t *src, uint8_t *dst) {
+void CUDATileGameOfLife::launchKernel(const uint8_t *src, uint8_t *dst) {
   dim3 block(BYTE_BLOCK_X, BYTE_BLOCK_Y);
   dim3 grid((cols_ + BYTE_TILE_COLS - 1) / BYTE_TILE_COLS,
             (rows_ + BYTE_BLOCK_Y - 1) / BYTE_BLOCK_Y);
   size_t shmem = (BYTE_TILE_COLS + 2) * (BYTE_BLOCK_Y + 2) * sizeof(uint8_t);
-  golKernelTile4<<<grid, block, shmem>>>(src, dst,
+  golKernelTile<<<grid, block, shmem>>>(src, dst,
       static_cast<unsigned int>(rows_), static_cast<unsigned int>(cols_));
   CUDA_CHECK(cudaGetLastError());
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 4. Bit-packed kernel (cuda-bitpack)
+// 3. Bit-packed kernel (cuda-bitpack)
 // ═══════════════════════════════════════════════════════════════════════════
 
 __device__ void d_rowSum3(uint64_t L, uint64_t C, uint64_t R,
