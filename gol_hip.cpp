@@ -499,10 +499,6 @@ __global__ void hipGolBitPackKernel(const uint64_t *src, uint64_t *dst,
     }
 }
 
-HIPBitPackGameOfLife::HIPBitPackGameOfLife(Grid &grid)
-    : GPUEngine(BitGrid(grid), hipOps()) {
-}
-
 HIPBitPackGameOfLife::HIPBitPackGameOfLife(BitGrid &grid)
     : GPUEngine(std::move(grid), hipOps()) {
 }

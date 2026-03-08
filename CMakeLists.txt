@@ -15,11 +15,12 @@ find_package(MPI REQUIRED)
 
 add_executable(golSimulator
     golSimulator.cpp
-    gol.cpp
+    grid.cpp
     gol_simple.cpp
     gol_simd.cpp
     gol_bitpack.cpp
     gol_utils.cpp
+    gol_mpi.cpp
 )
 # -march=native enables platform SIMD (NEON on Apple Silicon, AVX2 on x86).
 # For full optimisation build with: cmake -B build -DCMAKE_BUILD_TYPE=Release

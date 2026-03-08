@@ -508,10 +508,6 @@ __global__ void golBitPackKernel(const uint64_t *src, uint64_t *dst,
     }
 }
 
-CUDABitPackGameOfLife::CUDABitPackGameOfLife(Grid &grid)
-    : GPUEngine(BitGrid(grid), cudaOps()) {
-}
-
 CUDABitPackGameOfLife::CUDABitPackGameOfLife(BitGrid &grid)
     : GPUEngine(std::move(grid), cudaOps()) {
 }

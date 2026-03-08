@@ -1,25 +1,16 @@
 #include "gol_utils.h"
+#include "gol_gpu.h"
+#include "gol_mpi.h"
 
 #include <algorithm>
 #include <cstring>
 #include <iostream>
+#include <memory>
 #include <random>
 #include <sstream>
-#include <type_traits>
 
 #include <getopt.h>
-#include <mpi.h>
 #include <unistd.h>
-
-// ── MPI datatype trait ──────────────────────────────────────────────────────
-
-template <typename T> static MPI_Datatype mpiDatatype();
-template <> MPI_Datatype mpiDatatype<uint8_t>() {
-    return MPI_UINT8_T;
-}
-template <> MPI_Datatype mpiDatatype<uint64_t>() {
-    return MPI_UINT64_T;
-}
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -33,29 +24,17 @@ static std::vector<size_t> parseArgs(const std::string &args) {
     return values;
 }
 
-static std::vector<std::pair<size_t, size_t>> getRowRanges(int numRanks,
-                                                           size_t totalRows) {
-    std::vector<std::pair<size_t, size_t>> ranges;
-    int overlap            = 2;
-    unsigned int rangeSize = (totalRows + overlap * (numRanks - 1)) / numRanks;
-    unsigned int extraRows = (totalRows + overlap * (numRanks - 1)) % numRanks;
-
-    size_t startRow = 0;
-    for (int rank = 0; rank < numRanks; ++rank) {
-        unsigned int currentRangeSize =
-            rangeSize + (static_cast<unsigned int>(rank) >=
-                                 static_cast<unsigned int>(numRanks) - extraRows
-                             ? 1
-                             : 0);
-        size_t endRow = startRow + currentRangeSize - 1;
-        endRow        = std::min(endRow, totalRows - 1);
-        ranges.emplace_back(startRow, endRow);
-        startRow = endRow - overlap + 1;
-        if (startRow > totalRows - 1)
-            startRow = totalRows - 1;
-    }
-    return ranges;
-}
+static const std::pair<const char *, Engine> engineNames[] = {
+    {"simple", ENGINE_SIMPLE},
+    {"simd", ENGINE_SIMD},
+    {"bitpack", ENGINE_BITPACK},
+    {"cuda-simple", ENGINE_CUDA_SIMPLE},
+    {"cuda-tile", ENGINE_CUDA_TILE},
+    {"cuda-bitpack", ENGINE_CUDA_BITPACK},
+    {"hip-simple", ENGINE_HIP_SIMPLE},
+    {"hip-tile", ENGINE_HIP_TILE},
+    {"hip-bitpack", ENGINE_HIP_BITPACK},
+};
 
 // ── Print functions ─────────────────────────────────────────────────────────
 
@@ -70,10 +49,13 @@ void printHelp() {
         << "  -p, --print <float>          Print each step (delay in seconds)\n"
         << "  -o, --output <filename>.txt  Output file name\n"
         << "  -n, --numthreads <int>       Number of OpenMP threads\n"
-        << "  -e, --engine <name>          Engine: simple, simd, bitpack, "
-           "cuda-simple, cuda-tile, cuda-bitpack, hip-simple, hip-tile, "
-           "hip-bitpack\n"
-        << "  -h, --help                   Print this help message\n";
+        << "  -e, --engine <name>          Engine: ";
+    for (size_t i = 0; i < std::size(engineNames); i++) {
+        if (i > 0)
+            std::cerr << ", ";
+        std::cerr << engineNames[i].first;
+    }
+    std::cerr << "\n  -h, --help                   Print this help message\n";
 }
 
 void printLine(size_t length) {
@@ -82,7 +64,13 @@ void printLine(size_t length) {
     std::cout << "\n";
 }
 
-bool initSimulation(int argc, char **argv, Grid &grid, SimParams &params) {
+void printSimInfo(const SimParams &params) {
+    std::cout << "Initializing GameOfLife with grid size ("
+              << params.fullGridRows << ", " << params.fullGridColumns
+              << ") for " << params.steps << " generations\n";
+}
+
+bool initSimulation(int argc, char **argv, SimParams &params) {
     const char *const short_opts = "f:r:s:g:n:p:o:e:h";
     const option long_opts[]     = {
         {"file", required_argument, nullptr, 'f'},
@@ -96,7 +84,6 @@ bool initSimulation(int argc, char **argv, Grid &grid, SimParams &params) {
         {"help", no_argument, nullptr, 'h'},
         {nullptr, no_argument, nullptr, 0}};
 
-    std::string filePath;
     std::string randomArgs;
     bool seedProvided = false;
 
@@ -105,7 +92,7 @@ bool initSimulation(int argc, char **argv, Grid &grid, SimParams &params) {
            -1) {
         switch (opt) {
             case 'f':
-                filePath = optarg;
+                params.filename = optarg;
                 break;
             case 'r':
                 randomArgs = optarg;
@@ -128,25 +115,14 @@ bool initSimulation(int argc, char **argv, Grid &grid, SimParams &params) {
                 break;
             case 'e': {
                 std::string eng = optarg;
-                if (eng == "simple")
-                    params.engine = ENGINE_SIMPLE;
-                else if (eng == "simd")
-                    params.engine = ENGINE_SIMD;
-                else if (eng == "bitpack")
-                    params.engine = ENGINE_BITPACK;
-                else if (eng == "cuda-tile")
-                    params.engine = ENGINE_CUDA_TILE;
-                else if (eng == "cuda-simple")
-                    params.engine = ENGINE_CUDA_SIMPLE;
-                else if (eng == "cuda-bitpack")
-                    params.engine = ENGINE_CUDA_BITPACK;
-                else if (eng == "hip-simple")
-                    params.engine = ENGINE_HIP_SIMPLE;
-                else if (eng == "hip-tile")
-                    params.engine = ENGINE_HIP_TILE;
-                else if (eng == "hip-bitpack")
-                    params.engine = ENGINE_HIP_BITPACK;
-                else {
+                bool found      = false;
+                for (const auto &[name, id] : engineNames)
+                    if (eng == name) {
+                        params.engine = id;
+                        found         = true;
+                        break;
+                    }
+                if (!found) {
                     std::cerr << "Error: unknown engine '" << eng << "'\n";
                     printHelp();
                     return false;
@@ -162,11 +138,8 @@ bool initSimulation(int argc, char **argv, Grid &grid, SimParams &params) {
         }
     }
 
-    if (!filePath.empty()) {
-        grid                   = Grid(filePath);
-        params.fullGridRows    = grid.getNumRows();
-        params.fullGridColumns = grid.getNumCols();
-        params.alive           = grid.aliveCells();
+    if (!params.filename.empty()) {
+        // Dimensions determined when the grid is constructed in createEngine
     } else if (!randomArgs.empty()) {
         auto values = parseArgs(randomArgs);
         if (values.size() != 3) {
@@ -179,183 +152,95 @@ bool initSimulation(int argc, char **argv, Grid &grid, SimParams &params) {
         params.randomInit      = true;
         if (!seedProvided)
             params.seed = std::random_device()();
-
-        // Bitpack engines construct BitGrid directly — skip Grid allocation
-        bool needsGrid = (params.engine != ENGINE_BITPACK);
-#if GOL_CUDA
-        needsGrid = needsGrid && (params.engine != ENGINE_CUDA_BITPACK);
-#endif
-#if GOL_HIP
-        needsGrid = needsGrid && (params.engine != ENGINE_HIP_BITPACK);
-#endif
-        if (needsGrid) {
-            std::mt19937 rng(params.seed);
-            grid = Grid(values[0], values[1], values[2], rng);
-        }
     } else {
-        std::cerr << "Error: No initialization option provided.\n";
+        std::cerr << "Error: No initialisation option provided.\n";
         printHelp();
         return false;
     }
 
-    std::cout << "Initializing GameOfLife with grid size ("
-              << params.fullGridRows << ", " << params.fullGridColumns
-              << ") and " << params.alive << " alive cells for " << params.steps
-              << " generations\n";
-
     return true;
 }
 
-// ── MPI broadcast ───────────────────────────────────────────────────────────
-
-void mpiBroadcastSimInfo(SimParams &params) {
-    MPI_Bcast(&params.steps, 1, MPI_UNSIGNED, 0, MPI_COMM_WORLD);
-    MPI_Bcast(&params.numThreads, 1, MPI_INT, 0, MPI_COMM_WORLD);
-    MPI_Bcast(&params.fullGridRows, 1, MPI_UNSIGNED_LONG, 0, MPI_COMM_WORLD);
-    MPI_Bcast(&params.fullGridColumns, 1, MPI_UNSIGNED_LONG, 0, MPI_COMM_WORLD);
-    MPI_Bcast(&params.sleepTime, 1, MPI_FLOAT, 0, MPI_COMM_WORLD);
-    MPI_Bcast(&params.engine, 1, MPI_INT, 0, MPI_COMM_WORLD);
-}
-
-// ── Game-level MPI (use virtual base) ───────────────────────────────────────
-
-void exchangeBoundaryRows(GameOfLife &game, int mpiRank, int mpiSize) {
-    MPI_Datatype dtype =
-        (game.getCellKind() == CellKind::Byte) ? MPI_UINT8_T : MPI_UINT64_T;
-    int stride  = static_cast<int>(game.getStride());
-    size_t rows = game.getNumRows();
-    MPI_Request sendRequest[2];
-
-    if (mpiRank > 0) {
-        MPI_Isend(game.getRowDataRaw(1), stride, dtype, mpiRank - 1, 0,
-                  MPI_COMM_WORLD, &sendRequest[0]);
-    }
-    if (mpiRank < mpiSize - 1) {
-        MPI_Isend(game.getRowDataRaw(rows - 2), stride, dtype, mpiRank + 1, 1,
-                  MPI_COMM_WORLD, &sendRequest[1]);
-    }
-    if (mpiRank > 0) {
-        MPI_Recv(game.getRowDataRaw(0), stride, dtype, mpiRank - 1, 1,
-                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    }
-    if (mpiRank < mpiSize - 1) {
-        MPI_Recv(game.getRowDataRaw(rows - 1), stride, dtype, mpiRank + 1, 0,
-                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    }
-}
-
-void assembleSend(GameOfLife &game, int mpiRank, int mpiSize) {
-    MPI_Datatype dtype =
-        (game.getCellKind() == CellKind::Byte) ? MPI_UINT8_T : MPI_UINT64_T;
-    int stride           = static_cast<int>(game.getStride());
-    size_t rows          = game.getNumRows();
-    size_t numRowsToSend = (mpiRank == mpiSize - 1) ? rows - 1 : rows - 2;
-    for (size_t row = 1; row <= numRowsToSend; ++row) {
-        MPI_Send(game.getRowDataRaw(row), stride, dtype, 0,
-                 static_cast<int>(row - 1), MPI_COMM_WORLD);
-    }
-}
+// ── Engine factory ──────────────────────────────────────────────────────────
 
 template <typename GridType>
-static GridType assembleFullGridImpl(GameOfLife &game, size_t fullRows,
-                                     size_t fullCols, int mpiSize) {
-    size_t localRows     = game.getNumRows();
-    int stride           = static_cast<int>(game.getStride());
-    const auto rowRanges = getRowRanges(mpiSize, fullRows);
-
-    GridType assembled(fullRows, fullCols);
-    for (size_t row = 0; row < localRows - 1; ++row)
-        assembled.setRow(row, static_cast<const typename GridType::CellType *>(
-                                  game.getRowDataRaw(row)));
-    for (int rank = 1; rank < mpiSize; ++rank) {
-        size_t startRow = rowRanges[rank].first + 1;
-        size_t rowsToReceive =
-            rowRanges[rank].second -
-            ((rank == mpiSize - 1) ? startRow - 1 : startRow);
-        for (size_t row = 0; row < rowsToReceive; ++row) {
-            MPI_Recv(assembled.getRowData(startRow + row), stride,
-                     mpiDatatype<typename GridType::CellType>(), rank,
-                     static_cast<int>(row), MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        }
+static GridType makeGrid(const SimParams &params) {
+    if (params.randomInit) {
+        std::mt19937 rng(params.seed);
+        return GridType(params.fullGridRows, params.fullGridColumns,
+                        params.alive, rng);
     }
-    return assembled;
+    return GridType(params.filename);
 }
 
-template <typename GridType>
-static void assembleOutputImpl(GameOfLife &game, size_t fullRows,
-                               size_t fullCols, int mpiSize, float sleepTime,
-                               int step, const std::string &outfile) {
-    GridType grid =
-        assembleFullGridImpl<GridType>(game, fullRows, fullCols, mpiSize);
-    if (sleepTime >= 0)
-        printStep(grid, "Generation:", step, sleepTime);
-    if (!outfile.empty())
-        grid.writeToFile(outfile);
+template <typename EngineType, typename GridType>
+static std::unique_ptr<GameOfLife> setupEngine(SimParams &params, int mpiRank,
+                                               int mpiSize) {
+    GridType grid;
+    if (mpiRank == 0) {
+        grid = makeGrid<GridType>(params);
+        params.fullGridRows    = grid.getNumRows();
+        params.fullGridColumns = grid.getNumCols();
+    }
+    if (mpiSize > 1) {
+        GridType localGrid;
+        if (mpiRank == 0)
+            mpiSplitGrid(localGrid, grid, mpiSize);
+        else
+            mpiReceiveGrid(localGrid, 0);
+        return std::make_unique<EngineType>(localGrid);
+    }
+    return std::make_unique<EngineType>(grid);
 }
 
-void assembleOutput(GameOfLife &game, size_t fullRows, size_t fullCols,
-                    int mpiSize, float sleepTime, int step,
-                    const std::string &outfile) {
-    if (game.getCellKind() == CellKind::Byte)
-        assembleOutputImpl<Grid>(game, fullRows, fullCols, mpiSize, sleepTime,
-                                 step, outfile);
-    else
-        assembleOutputImpl<BitGrid>(game, fullRows, fullCols, mpiSize,
-                                    sleepTime, step, outfile);
-}
-
-// ── Grid-level MPI ──────────────────────────────────────────────────────────
-
-template <typename GridType>
-static void mpiSendGrid(const GridType &grid, int rank) {
-    size_t rows = grid.getNumRows();
-    size_t cols = grid.getNumCols();
-    MPI_Send(&rows, 1, MPI_UNSIGNED_LONG, rank, 0, MPI_COMM_WORLD);
-    MPI_Send(&cols, 1, MPI_UNSIGNED_LONG, rank, 0, MPI_COMM_WORLD);
-    int totalElements = static_cast<int>(rows * grid.getStride());
-    MPI_Send(grid.getData(), totalElements,
-             mpiDatatype<typename GridType::CellType>(), rank, 0,
-             MPI_COMM_WORLD);
-}
-
-template <typename GridType> void mpiReceiveGrid(GridType &grid, int rank) {
-    size_t rows, cols;
-    MPI_Recv(&rows, 1, MPI_UNSIGNED_LONG, 0, 0, MPI_COMM_WORLD,
-             MPI_STATUS_IGNORE);
-    MPI_Recv(&cols, 1, MPI_UNSIGNED_LONG, 0, 0, MPI_COMM_WORLD,
-             MPI_STATUS_IGNORE);
-    grid              = GridType(rows, cols);
-    int totalElements = static_cast<int>(rows * grid.getStride());
-    MPI_Recv(grid.getData(), totalElements,
-             mpiDatatype<typename GridType::CellType>(), rank, 0,
-             MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-}
-
-template void mpiReceiveGrid<Grid>(Grid &, int);
-template void mpiReceiveGrid<BitGrid>(BitGrid &, int);
-
-template <typename GridType>
-void mpiSplitGrid(GridType &localGrid, const GridType &fullGrid, int mpiSize) {
-    size_t gridRows      = fullGrid.getNumRows();
-    size_t gridColumns   = fullGrid.getNumCols();
-    const auto rowRanges = getRowRanges(mpiSize, gridRows);
-
-    for (int rank = 0; rank < mpiSize; ++rank) {
-        size_t startRow  = rowRanges[rank].first;
-        size_t endRow    = rowRanges[rank].second;
-        size_t localRows = endRow - startRow + 1;
-
-        GridType chunk(localRows, gridColumns);
-        for (size_t row = 0; row < localRows; ++row) {
-            chunk.setRow(row, fullGrid.getRowData(startRow + row));
-        }
-        if (rank == 0) {
-            localGrid = std::move(chunk);
-        } else {
-            mpiSendGrid(chunk, rank);
-        }
+std::unique_ptr<GameOfLife> createEngine(SimParams &params, int mpiRank,
+                                         int mpiSize) {
+    switch (params.engine) {
+        case ENGINE_SIMPLE:
+            return setupEngine<SimpleGameOfLife, Grid>(params, mpiRank, mpiSize);
+        case ENGINE_SIMD:
+            return setupEngine<SIMDGameOfLife, Grid>(params, mpiRank, mpiSize);
+        case ENGINE_BITPACK:
+            return setupEngine<BitPackGameOfLife, BitGrid>(params, mpiRank, mpiSize);
+#if GOL_CUDA
+        case ENGINE_CUDA_SIMPLE:
+            return setupEngine<CUDASimpleGameOfLife, Grid>(params, mpiRank, mpiSize);
+        case ENGINE_CUDA_TILE:
+            return setupEngine<CUDATileGameOfLife, Grid>(params, mpiRank, mpiSize);
+        case ENGINE_CUDA_BITPACK:
+            return setupEngine<CUDABitPackGameOfLife, BitGrid>(params, mpiRank, mpiSize);
+#endif
+#if GOL_HIP
+        case ENGINE_HIP_SIMPLE:
+            return setupEngine<HIPSimpleGameOfLife, Grid>(params, mpiRank, mpiSize);
+        case ENGINE_HIP_TILE:
+            return setupEngine<HIPTileGameOfLife, Grid>(params, mpiRank, mpiSize);
+        case ENGINE_HIP_BITPACK:
+            return setupEngine<HIPBitPackGameOfLife, BitGrid>(params, mpiRank, mpiSize);
+#endif
+        default:
+            return nullptr;
     }
 }
 
-template void mpiSplitGrid<Grid>(Grid &, const Grid &, int);
-template void mpiSplitGrid<BitGrid>(BitGrid &, const BitGrid &, int);
+// ── Print utilities ─────────────────────────────────────────────────────────
+
+template <typename T>
+void printStep(const T &grid, const std::string &label, int value,
+               float sleepTime) {
+    std::cout << label << " " << value << "\n";
+    printLine(grid.getNumCols());
+    grid.printGrid();
+    printLine(grid.getNumCols());
+    if (sleepTime > 0) {
+        std::cout.flush();
+        std::cout << "\033[" << grid.getNumRows() + 3 << "A";
+        usleep(static_cast<unsigned int>(sleepTime * 1.0e6));
+    } else {
+        std::cout.flush();
+    }
+}
+
+template void printStep(const Grid &, const std::string &, int, float);
+template void printStep(const BitGrid &, const std::string &, int, float);
+template void printStep(const GameOfLife &, const std::string &, int, float);

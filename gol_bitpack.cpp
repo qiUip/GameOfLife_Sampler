@@ -1,78 +1,9 @@
 #include "gol.h"
 
 #include <cstdlib>
-#include <fstream>
-#include <iostream>
 #include <omp.h>
 
-// ── BitGrid implementation ──────────────────────────────────────────────────
-
-BitGrid::BitGrid(size_t rows, size_t cols)
-    : GridStorage(rows, cols, (cols + 63) / 64),
-      wordsPerRow_((cols + 63) / 64) {
-}
-
-BitGrid::BitGrid(size_t rows, size_t cols, unsigned int alive,
-                 std::mt19937 &rng)
-    : GridStorage(rows, cols, (cols + 63) / 64),
-      wordsPerRow_((cols + 63) / 64) {
-    std::uniform_int_distribution<size_t> dist(0, rows * cols - 1);
-    size_t uniqueNumbers = 0;
-    while (uniqueNumbers < alive) {
-        size_t idx     = dist(rng);
-        size_t r       = idx / cols;
-        size_t c       = idx % cols;
-        uint64_t &word = data_[r * wordsPerRow_ + c / 64];
-        uint64_t bit   = uint64_t(1) << (c % 64);
-        if (!(word & bit)) {
-            word |= bit;
-            uniqueNumbers++;
-        }
-    }
-}
-
-BitGrid::BitGrid(const Grid &g)
-    : GridStorage(g.getNumRows(), g.getNumCols(), (g.getNumCols() + 63) / 64),
-      wordsPerRow_((g.getNumCols() + 63) / 64) {
-    for (size_t r = 0; r < rows_; ++r)
-        for (size_t c = 0; c < cols_; ++c)
-            if (g.getCell(r, c))
-                data_[r * wordsPerRow_ + c / 64] |= uint64_t(1) << (c % 64);
-}
-
-size_t BitGrid::aliveCells() const {
-    size_t count = 0;
-    for (size_t i = 0; i < rows_ * wordsPerRow_; ++i)
-        count += __builtin_popcountll(data_[i]);
-    return count;
-}
-
-void BitGrid::printGrid() const {
-    for (size_t row = 0; row < rows_; ++row) {
-        for (size_t col = 0; col < cols_; ++col) {
-            std::cout << (getCell(row, col) ? "o" : "-") << " ";
-        }
-        std::cout << "\n";
-    }
-}
-
-void BitGrid::writeToFile(const std::string &filename) const {
-    std::ofstream file(filename);
-    if (!file.is_open()) {
-        std::cerr << "Error: Cannot write to file " << filename << "\n";
-        return;
-    }
-    for (size_t row = 0; row < rows_; ++row) {
-        for (size_t col = 0; col < cols_; ++col) {
-            file << (getCell(row, col) ? "o" : "-");
-            if (col < cols_ - 1)
-                file << " ";
-        }
-        file << "\n";
-    }
-}
-
-// ── Bit-parallel helpers ─────────────────────────────────────────────────────
+// ── Bit-parallel helpers ────────────────────────────────────────────────────
 
 // rowSum3: 3-input per-bit adder -> 2-bit result (s1:s0) per bit position.
 static inline void rowSum3(uint64_t L, uint64_t C, uint64_t R, uint64_t &s1,
@@ -102,13 +33,6 @@ static inline void sum9(uint64_t p1, uint64_t p0, uint64_t c1, uint64_t c0,
 }
 
 // ── BitPackGameOfLife implementation ────────────────────────────────────────
-
-BitPackGameOfLife::BitPackGameOfLife(Grid &grid)
-    : current_(grid), next_(grid.getNumRows(), grid.getNumCols()),
-      wordsPerRow_((grid.getNumCols() + 63) / 64) {
-    rows_ = grid.getNumRows();
-    cols_ = grid.getNumCols();
-}
 
 BitPackGameOfLife::BitPackGameOfLife(BitGrid &grid)
     : current_(std::move(grid)),

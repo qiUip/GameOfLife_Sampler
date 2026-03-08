@@ -66,7 +66,6 @@ protected:
 
 class CUDABitPackGameOfLife : public GPUEngine<uint64_t, BitGrid> {
 public:
-    explicit CUDABitPackGameOfLife(Grid &grid);
     explicit CUDABitPackGameOfLife(BitGrid &grid);
     CellKind getCellKind() const override;
 
@@ -100,7 +99,6 @@ protected:
 
 class HIPBitPackGameOfLife : public GPUEngine<uint64_t, BitGrid> {
 public:
-    explicit HIPBitPackGameOfLife(Grid &grid);
     explicit HIPBitPackGameOfLife(BitGrid &grid);
     CellKind getCellKind() const override;
 
