@@ -15,26 +15,25 @@
         }                                                                      \
     } while (0)
 
+static void cudaAlloc(void **ptr, size_t bytes) { CUDA_CHECK(cudaMalloc(ptr, bytes)); }
+static void cudaFreeWrap(void *ptr) { cudaFree(ptr); }
+static void cudaCopyH2D(void *dst, const void *src, size_t bytes) {
+  CUDA_CHECK(cudaMemcpy(dst, src, bytes, cudaMemcpyHostToDevice));
+}
+static void cudaCopyD2H(void *dst, const void *src, size_t bytes) {
+  CUDA_CHECK(cudaMemcpy(dst, src, bytes, cudaMemcpyDeviceToHost));
+}
+static void cudaSyncWrap() { CUDA_CHECK(cudaDeviceSynchronize()); }
+static void cudaCheckLastWrap(const char *ctx) {
+  cudaError_t err = cudaGetLastError();
+  if (err != cudaSuccess) {
+    fprintf(stderr, "CUDA error after %s: %s\n", ctx, cudaGetErrorString(err));
+    exit(EXIT_FAILURE);
+  }
+}
+
 static GpuOps cudaOps() {
-  return {
-    [](void **ptr, size_t bytes) { CUDA_CHECK(cudaMalloc(ptr, bytes)); },
-    [](void *ptr) { cudaFree(ptr); },
-    [](void *dst, const void *src, size_t bytes) {
-      CUDA_CHECK(cudaMemcpy(dst, src, bytes, cudaMemcpyHostToDevice));
-    },
-    [](void *dst, const void *src, size_t bytes) {
-      CUDA_CHECK(cudaMemcpy(dst, src, bytes, cudaMemcpyDeviceToHost));
-    },
-    []() { CUDA_CHECK(cudaDeviceSynchronize()); },
-    [](const char *ctx) {
-      cudaError_t err = cudaGetLastError();
-      if (err != cudaSuccess) {
-        fprintf(stderr, "CUDA error after %s: %s\n", ctx,
-                cudaGetErrorString(err));
-        exit(EXIT_FAILURE);
-      }
-    }
-  };
+  return {cudaAlloc, cudaFreeWrap, cudaCopyH2D, cudaCopyD2H, cudaSyncWrap, cudaCheckLastWrap};
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
