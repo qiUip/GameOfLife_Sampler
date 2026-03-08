@@ -63,7 +63,7 @@ void printHelp() {
       << "  -p, --print <float>          Print each step (delay in seconds)\n"
       << "  -o, --output <filename>.txt  Output file name\n"
       << "  -n, --numthreads <int>       Number of OpenMP threads\n"
-      << "  -e, --engine <name>          Engine: simple, simd, bitpack, cuda-simple, cuda-tile, cuda-bitpack\n"
+      << "  -e, --engine <name>          Engine: simple, simd, bitpack, cuda-simple, cuda-tile, cuda-bitpack, hip-simple, hip-tile, hip-bitpack\n"
       << "  -h, --help                   Print this help message\n";
 }
 
@@ -124,6 +124,9 @@ bool initSimulation(int argc, char **argv, Grid &grid, SimParams &params) {
       else if (eng == "cuda-tile")    params.engine = ENGINE_CUDA_TILE;
       else if (eng == "cuda-simple")  params.engine = ENGINE_CUDA_SIMPLE;
       else if (eng == "cuda-bitpack") params.engine = ENGINE_CUDA_BITPACK;
+      else if (eng == "hip-simple")   params.engine = ENGINE_HIP_SIMPLE;
+      else if (eng == "hip-tile")     params.engine = ENGINE_HIP_TILE;
+      else if (eng == "hip-bitpack")  params.engine = ENGINE_HIP_BITPACK;
       else {
         std::cerr << "Error: unknown engine '" << eng << "'\n";
         printHelp();
@@ -161,6 +164,9 @@ bool initSimulation(int argc, char **argv, Grid &grid, SimParams &params) {
     bool needsGrid = (params.engine != ENGINE_BITPACK);
 #if GOL_CUDA
     needsGrid = needsGrid && (params.engine != ENGINE_CUDA_BITPACK);
+#endif
+#if GOL_HIP
+    needsGrid = needsGrid && (params.engine != ENGINE_HIP_BITPACK);
 #endif
     if (needsGrid) {
       std::mt19937 rng(params.seed);

@@ -1,4 +1,4 @@
-#include "gol.h"
+#include "gol_gpu.h"
 
 #include <cstdio>
 #include <cuda_runtime.h>
@@ -15,85 +15,27 @@
         }                                                                      \
     } while (0)
 
-// ═══════════════════════════════════════════════════════════════════════════
-// CUDAEngine — shared device buffer management
-// ═══════════════════════════════════════════════════════════════════════════
-
-template<typename CellT, typename HostGridT>
-CUDAEngine<CellT, HostGridT>::CUDAEngine(HostGridT hostGrid)
-    : hostGrid_(std::move(hostGrid)),
-      stride_(hostGrid_.getStride()) {
-  rows_ = hostGrid_.getNumRows();
-  cols_ = hostGrid_.getNumCols();
-  size_t totalBytes = rows_ * stride_ * sizeof(CellT);
-  CUDA_CHECK(cudaMalloc(&d_current_, totalBytes));
-  CUDA_CHECK(cudaMalloc(&d_next_, totalBytes));
-  CUDA_CHECK(cudaMemcpy(d_current_, hostGrid_.getData(), totalBytes,
-                         cudaMemcpyHostToDevice));
+static GpuOps cudaOps() {
+  return {
+    [](void **ptr, size_t bytes) { CUDA_CHECK(cudaMalloc(ptr, bytes)); },
+    [](void *ptr) { cudaFree(ptr); },
+    [](void *dst, const void *src, size_t bytes) {
+      CUDA_CHECK(cudaMemcpy(dst, src, bytes, cudaMemcpyHostToDevice));
+    },
+    [](void *dst, const void *src, size_t bytes) {
+      CUDA_CHECK(cudaMemcpy(dst, src, bytes, cudaMemcpyDeviceToHost));
+    },
+    []() { CUDA_CHECK(cudaDeviceSynchronize()); },
+    [](const char *ctx) {
+      cudaError_t err = cudaGetLastError();
+      if (err != cudaSuccess) {
+        fprintf(stderr, "CUDA error after %s: %s\n", ctx,
+                cudaGetErrorString(err));
+        exit(EXIT_FAILURE);
+      }
+    }
+  };
 }
-
-template<typename CellT, typename HostGridT>
-CUDAEngine<CellT, HostGridT>::~CUDAEngine() {
-  cudaFree(d_current_);
-  cudaFree(d_next_);
-}
-
-template<typename CellT, typename HostGridT>
-void CUDAEngine<CellT, HostGridT>::takeStep() {
-  launchKernel(d_current_, d_next_);
-  CellT *tmp = d_current_;
-  d_current_ = d_next_;
-  d_next_ = tmp;
-}
-
-template<typename CellT, typename HostGridT>
-void *CUDAEngine<CellT, HostGridT>::getRowDataRaw(size_t row) {
-  CUDA_CHECK(cudaMemcpy(hostGrid_.getRowData(row),
-                         d_current_ + row * stride_,
-                         stride_ * sizeof(CellT),
-                         cudaMemcpyDeviceToHost));
-  return hostGrid_.getRowData(row);
-}
-
-template<typename CellT, typename HostGridT>
-size_t CUDAEngine<CellT, HostGridT>::getStride() const { return stride_; }
-
-template<typename CellT, typename HostGridT>
-void CUDAEngine<CellT, HostGridT>::commitBoundaries() {
-  CUDA_CHECK(cudaMemcpy(d_current_,
-                         hostGrid_.getRowData(0),
-                         stride_ * sizeof(CellT),
-                         cudaMemcpyHostToDevice));
-  CUDA_CHECK(cudaMemcpy(d_current_ + (rows_ - 1) * stride_,
-                         hostGrid_.getRowData(rows_ - 1),
-                         stride_ * sizeof(CellT),
-                         cudaMemcpyHostToDevice));
-}
-
-template<typename CellT, typename HostGridT>
-void CUDAEngine<CellT, HostGridT>::sync() {
-  CUDA_CHECK(cudaDeviceSynchronize());
-}
-
-template<typename CellT, typename HostGridT>
-void CUDAEngine<CellT, HostGridT>::printGrid() const {
-  CUDA_CHECK(cudaMemcpy(hostGrid_.getData(), d_current_,
-                         rows_ * stride_ * sizeof(CellT),
-                         cudaMemcpyDeviceToHost));
-  hostGrid_.printGrid();
-}
-
-template<typename CellT, typename HostGridT>
-void CUDAEngine<CellT, HostGridT>::writeToFile(const std::string &filename) const {
-  CUDA_CHECK(cudaMemcpy(hostGrid_.getData(), d_current_,
-                         rows_ * stride_ * sizeof(CellT),
-                         cudaMemcpyDeviceToHost));
-  hostGrid_.writeToFile(filename);
-}
-
-// Explicit instantiations
-template class CUDAEngine<uint8_t, Grid>;
-template class CUDAEngine<uint64_t, BitGrid>;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Byte-per-cell kernels — two engines
@@ -271,7 +213,7 @@ __global__ void golKernelSimpleBorder(const uint8_t *src, uint8_t *dst,
 }
 
 CUDASimpleGameOfLife::CUDASimpleGameOfLife(Grid &grid)
-    : CUDAEngine(std::move(grid)) {}
+    : GPUEngine(std::move(grid), cudaOps()) {}
 
 CellKind CUDASimpleGameOfLife::getCellKind() const { return CellKind::Byte; }
 
@@ -308,39 +250,37 @@ void CUDASimpleGameOfLife::launchKernel(const uint8_t *src, uint8_t *dst) {
 
 // ── 2. Tiled kernel (cuda-tile) ──────────────────────────────────────────
 //
-// The simple kernel reads each cell from global memory up to 9 times
-// (as a neighbour of surrounding cells).  Shared memory eliminates this
-// redundancy: each block cooperatively loads its tile (including a 1-cell
-// halo) from global memory into on-chip shared memory, then all neighbour
-// reads come from shared memory at ~100× lower latency.
+// The simple kernel reads each cell from global memory up to 9 times (as a
+// neighbour of surrounding cells). Shared memory eliminates this redundancy:
+// each block cooperatively loads its tile (including a 1-cell halo) from global
+// memory into on-chip shared memory, then all neighbour reads come from shared
+// memory at ~100× lower latency.
 //
-// Unlike the per-SM L1 cache, shared memory is explicitly managed and
-// private to each block — data stays resident until the block is done
-// with it, regardless of what other blocks on the same SM are doing.
+// Unlike the per-SM L1 cache, shared memory is explicitly managed and private
+// to each block — data stays resident until the block is done with it,
+// regardless of what other blocks on the same SM are doing.
 //
-// Block: 32 × 8 = 256 threads.  Each thread computes 4 consecutive cells
-// in the column direction, so a block covers 128 columns × 8 rows.
-// Tile: (128 + 2) × (8 + 2) = 1,300 bytes shared memory (incl. halo).
-// Grid: 2D launch, one block per tile — all tiles run concurrently.
+// Block: 32 × 8 = 256 threads. Each thread computes 4 consecutive cells in the
+// column direction, so a block covers 128 columns × 8 rows. Tile: (128 + 2) ×
+// (8 + 2) = 1,300 bytes shared memory (incl. halo). Grid: 2D launch, one block
+// per tile — all tiles run concurrently.
 //
-// Loads: uint32_t vectorised reads for the 128 interior tile columns
-// (4 bytes at a time), with scalar reads for the 2 halo columns.
-// 128 cols / 4 = 32 words per row × 10 rows = 320 words total.
-// Division by 32 (power of 2) compiles to a shift, avoiding the Barrett
-// reduction needed for tileW = 130 in a flat byte-by-byte load.  Within
-// a warp, 32 threads each load one uint32_t from consecutive addresses →
-// 128 contiguous bytes, perfectly coalesced with no warp-straddling.
+// Loads: uint32_t vectorised reads for the 128 interior tile columns (4 bytes
+// at a time), with scalar reads for the 2 halo columns. 128 cols / 4 = 32 words
+// per row × 10 rows = 320 words total. Division by 32 (power of 2) compiles to
+// a shift in a flat byte-by-byte load. Within a warp, 32 threads each load one
+// uint32_t from consecutive addresses → 128 contiguous bytes, perfectly
+// coalesced with no warp-straddling.
 //
-// Stores: each thread packs its 4 results into a uint32_t and writes it
-// with a single 4-byte store.  Within a warp, 32 threads × 4 bytes =
-// 128 contiguous bytes — exactly one cache line, perfectly coalesced.
-// Byte stores cannot merge into a single wide transaction the way a
-// uint32_t store does, so the packing is critical for write throughput.
+// Stores: each thread packs its 4 results into a uint32_t and writes it with a
+// single 4-byte store. Within a warp, 32 threads × 4 bytes = 128 contiguous
+// bytes — exactly one cache line, perfectly coalesced. Byte stores cannot merge
+// into a single wide transaction the way a uint32_t store does, so the packing
+// is critical for write throughput.
 //
-// Boundary handling: the last tile column (when cols is not a multiple of
-// 128) falls through to byte-by-byte load and store paths.  This affects
-// only 1 out of ceil(cols/128) tile columns, so the branch cost is
-// negligible.
+// Boundary handling: the last tile column (when cols is not a multiple of 128)
+// falls through to byte-by-byte load and store paths. This affects only 1 out
+// of ceil(cols/128) tile columns, so the branch cost is negligible.
 //
 static constexpr int BYTE_BLOCK_X = 32;
 static constexpr int BYTE_BLOCK_Y = 8;
@@ -360,7 +300,7 @@ __global__ void golKernelTile(const uint8_t *src, uint8_t *dst,
   const unsigned int gc0_interior = blockIdx.x * BYTE_TILE_COLS;
   const int gr0 = (int)(blockIdx.y * blockDim.y) - 1;
 
-  // ── Phase 1a: interior load (uint32_t vectorised) ──
+  // Interior load (uint32_t vectorised) ──
   const unsigned int wordsPerRow = BYTE_TILE_COLS / 4;  // 32
   const unsigned int totalWords  = wordsPerRow * tileH;  // 320
   for (unsigned int i = tid; i < totalWords; i += blockSize) {
@@ -383,7 +323,7 @@ __global__ void golKernelTile(const uint8_t *src, uint8_t *dst,
     tile[tileBase + 3] = (packed >> 24) & 0xFF;
   }
 
-  // ── Phase 1b: left and right halo columns (scalar, 2 × tileH bytes) ──
+  // ── Left and right halo columns (scalar, 2 × tileH bytes) ──
   if (tid < tileH) {
     int gr = gr0 + (int)tid;
     int gc = (int)gc0_interior - 1;
@@ -400,7 +340,7 @@ __global__ void golKernelTile(const uint8_t *src, uint8_t *dst,
 
   __syncthreads();
 
-  // ── Phase 2: compute ──
+  // ── Compute ──
   // Fast path: pack 4 results into uint32_t, single coalesced 4-byte store.
   // Slow path: byte-by-byte for the last tile column if cols % 128 != 0.
   // The branch is warp-uniform for all but the rightmost tile column,
@@ -422,7 +362,7 @@ __global__ void golKernelTile(const uint8_t *src, uint8_t *dst,
 }
 
 CUDATileGameOfLife::CUDATileGameOfLife(Grid &grid)
-    : CUDAEngine(std::move(grid)) {}
+    : GPUEngine(std::move(grid), cudaOps()) {}
 
 CellKind CUDATileGameOfLife::getCellKind() const { return CellKind::Byte; }
 
@@ -532,10 +472,10 @@ __global__ void golBitPackKernel(const uint64_t *src, uint64_t *dst,
 }
 
 CUDABitPackGameOfLife::CUDABitPackGameOfLife(Grid &grid)
-    : CUDAEngine(BitGrid(grid)) {}
+    : GPUEngine(BitGrid(grid), cudaOps()) {}
 
 CUDABitPackGameOfLife::CUDABitPackGameOfLife(BitGrid &grid)
-    : CUDAEngine(std::move(grid)) {}
+    : GPUEngine(std::move(grid), cudaOps()) {}
 
 CellKind CUDABitPackGameOfLife::getCellKind() const {
   return CellKind::BitPacked;

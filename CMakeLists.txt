@@ -21,16 +21,30 @@ target_compile_options(golSimulator PRIVATE
 target_link_libraries(golSimulator ${MPI_LIBRARIES} OpenMP::OpenMP_CXX)
 target_include_directories(golSimulator PRIVATE ${MPI_INCLUDE_PATH})
 
-# Optional CUDA support
+# Optional GPU support
+set(GPU_SOURCES_ADDED FALSE)
+
 include(CheckLanguage)
 check_language(CUDA)
 if(CMAKE_CUDA_COMPILER)
   enable_language(CUDA)
-  target_sources(golSimulator PRIVATE gol_cuda.cu)
+  target_sources(golSimulator PRIVATE gol_cuda.cu gol_gpu.cpp)
   target_compile_definitions(golSimulator PRIVATE GOL_CUDA=1)
+  set(GPU_SOURCES_ADDED TRUE)
   set_target_properties(golSimulator PROPERTIES
     CUDA_SEPARABLE_COMPILATION ON
     POSITION_INDEPENDENT_CODE ON)
   target_compile_options(golSimulator PRIVATE
     $<$<COMPILE_LANGUAGE:CUDA>:-arch=native -lineinfo>)
+endif()
+
+find_package(hip QUIET)
+if(hip_FOUND)
+  target_sources(golSimulator PRIVATE gol_hip.cpp)
+  if(NOT GPU_SOURCES_ADDED)
+    target_sources(golSimulator PRIVATE gol_gpu.cpp)
+  endif()
+  target_compile_definitions(golSimulator PRIVATE GOL_HIP=1)
+  target_link_libraries(golSimulator PRIVATE hip::device)
+  set_source_files_properties(gol_hip.cpp PROPERTIES LANGUAGE HIP)
 endif()

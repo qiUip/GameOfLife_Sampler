@@ -5,6 +5,7 @@
 #include <omp.h>
 
 #include "gol.h"
+#include "gol_gpu.h"
 #include "gol_utils.h"
 
 template<typename Engine, typename GridType>
@@ -58,6 +59,9 @@ int main(int argc, char **argv) {
 #if GOL_CUDA
   case ENGINE_CUDA_BITPACK:
 #endif
+#if GOL_HIP
+  case ENGINE_HIP_BITPACK:
+#endif
   {
     BitGrid bg;
     if (mpiRank == 0) {
@@ -73,6 +77,11 @@ int main(int argc, char **argv) {
       game = setupGame<CUDABitPackGameOfLife>(bg, mpiRank, mpiSize);
     else
 #endif
+#if GOL_HIP
+    if (params.engine == ENGINE_HIP_BITPACK)
+      game = setupGame<HIPBitPackGameOfLife>(bg, mpiRank, mpiSize);
+    else
+#endif
       game = setupGame<BitPackGameOfLife>(bg, mpiRank, mpiSize);
     break;
   }
@@ -82,6 +91,14 @@ int main(int argc, char **argv) {
     break;
   case ENGINE_CUDA_TILE:
     game = setupGame<CUDATileGameOfLife>(grid, mpiRank, mpiSize);
+    break;
+#endif
+#if GOL_HIP
+  case ENGINE_HIP_SIMPLE:
+    game = setupGame<HIPSimpleGameOfLife>(grid, mpiRank, mpiSize);
+    break;
+  case ENGINE_HIP_TILE:
+    game = setupGame<HIPTileGameOfLife>(grid, mpiRank, mpiSize);
     break;
 #endif
   default:
