@@ -32,7 +32,8 @@ int main(int argc, char **argv) {
     std::unique_ptr<GameOfLife> game = createEngine(params, mpiRank, mpiSize);
     if (!game) {
         if (mpiRank == 0)
-            std::cerr << "Error: engine not available (built without CUDA/HIP?)\n";
+            std::cerr
+                << "Error: engine not available (built without CUDA/HIP?)\n";
         MPI_Finalize();
         return EXIT_FAILURE;
     }

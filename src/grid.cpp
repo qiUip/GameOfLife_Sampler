@@ -47,8 +47,7 @@ static void fillFromFile(GridType &grid, const FileData &fd) {
                 grid.setCell(r, c, true);
 }
 
-template <typename GridType>
-static void printGridImpl(const GridType &grid) {
+template <typename GridType> static void printGridImpl(const GridType &grid) {
     for (size_t row = 0; row < grid.getNumRows(); ++row) {
         for (size_t col = 0; col < grid.getNumCols(); ++col)
             std::cout << (grid.getCell(row, col) ? "o" : "-") << " ";

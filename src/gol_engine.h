@@ -1,5 +1,5 @@
-#ifndef GOL_H
-#define GOL_H
+#ifndef GOL_ENGINE_H
+#define GOL_ENGINE_H
 
 #include "grid.h"
 #include <string>
@@ -74,6 +74,23 @@ public:
         currentGrid_.writeToFile(f);
     }
 
+    // Static helpers exposed for unit testing.
+    static uint8_t golRule(uint8_t alive, uint8_t nb);
+
+    template <bool HasPrev, bool HasNext, bool HasLeft, bool HasRight>
+    static uint8_t aliveNeighbours(const uint8_t *p, const uint8_t *c,
+                                   const uint8_t *n, size_t col);
+
+    static void processInteriorCells(const uint8_t *p, const uint8_t *c,
+                                     const uint8_t *n, uint8_t *o, size_t cols);
+
+    static void processInteriorRow(const uint8_t *p, const uint8_t *c,
+                                   const uint8_t *n, uint8_t *o, size_t cols);
+
+    template <bool HasPrev, bool HasNext>
+    static void processBorderRow(const uint8_t *p, const uint8_t *c,
+                                 const uint8_t *n, uint8_t *o, size_t cols);
+
 private:
     Grid currentGrid_;
     Grid newGrid_;
@@ -95,9 +112,17 @@ public:
         current_.writeToFile(f);
     }
 
+    // Static helpers exposed for unit testing.
+    static void rowSum3(uint64_t L, uint64_t C, uint64_t R, uint64_t &s1,
+                        uint64_t &s0);
+
+    static void sum9(uint64_t p1, uint64_t p0, uint64_t c1, uint64_t c0,
+                     uint64_t n1, uint64_t n0, uint64_t &o3, uint64_t &o2,
+                     uint64_t &o1, uint64_t &o0);
+
 private:
     BitGrid current_, next_;
     size_t wordsPerRow_;
 };
 
-#endif // GOL_H
+#endif // GOL_ENGINE_H

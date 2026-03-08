@@ -1,4 +1,4 @@
-#include "gol.h"
+#include "gol_engine.h"
 
 #include <cstdint>
 #include <cstring>
@@ -34,15 +34,13 @@ template <class M, class V> V simd_select(M mask, V a, V b) {
 
 // ── SIMD helpers ─────────────────────────────────────────────────────────────
 
-// GOL rule: born if nb==3, survive if alive and nb==2.
-static uint8_t golRule(uint8_t alive, uint8_t nb) {
+uint8_t SIMDGameOfLife::golRule(uint8_t alive, uint8_t nb) {
     return (nb == 3) | (alive & (nb == 2));
 }
 
-// 8-neighbour count for a single cell with templated boundary knowledge.
 template <bool HasPrev, bool HasNext, bool HasLeft, bool HasRight>
-static uint8_t aliveNeighbours(const uint8_t *p, const uint8_t *c,
-                               const uint8_t *n, size_t col) {
+uint8_t SIMDGameOfLife::aliveNeighbours(const uint8_t *p, const uint8_t *c,
+                                        const uint8_t *n, size_t col) {
     uint8_t nb = 0;
     if constexpr (HasPrev) {
         if constexpr (HasLeft)
@@ -65,13 +63,46 @@ static uint8_t aliveNeighbours(const uint8_t *p, const uint8_t *c,
     return nb;
 }
 
-// ── Interior cell backends
-// ──────────────────────────────────────────────────── Processes interior
-// columns [1, cols-1) for a fully-surrounded interior row.
-static void processInteriorCells(const uint8_t *__restrict__ p,
-                                 const uint8_t *__restrict__ c,
-                                 const uint8_t *__restrict__ n,
-                                 uint8_t *__restrict__ o, size_t cols) {
+// Explicit instantiations for all 16 combinations of boundary booleans.
+template uint8_t SIMDGameOfLife::aliveNeighbours<false, false, false, false>(
+    const uint8_t *, const uint8_t *, const uint8_t *, size_t);
+template uint8_t SIMDGameOfLife::aliveNeighbours<false, false, false, true>(
+    const uint8_t *, const uint8_t *, const uint8_t *, size_t);
+template uint8_t SIMDGameOfLife::aliveNeighbours<false, false, true, false>(
+    const uint8_t *, const uint8_t *, const uint8_t *, size_t);
+template uint8_t SIMDGameOfLife::aliveNeighbours<false, false, true, true>(
+    const uint8_t *, const uint8_t *, const uint8_t *, size_t);
+template uint8_t SIMDGameOfLife::aliveNeighbours<false, true, false, false>(
+    const uint8_t *, const uint8_t *, const uint8_t *, size_t);
+template uint8_t SIMDGameOfLife::aliveNeighbours<false, true, false, true>(
+    const uint8_t *, const uint8_t *, const uint8_t *, size_t);
+template uint8_t SIMDGameOfLife::aliveNeighbours<false, true, true, false>(
+    const uint8_t *, const uint8_t *, const uint8_t *, size_t);
+template uint8_t SIMDGameOfLife::aliveNeighbours<false, true, true, true>(
+    const uint8_t *, const uint8_t *, const uint8_t *, size_t);
+template uint8_t SIMDGameOfLife::aliveNeighbours<true, false, false, false>(
+    const uint8_t *, const uint8_t *, const uint8_t *, size_t);
+template uint8_t SIMDGameOfLife::aliveNeighbours<true, false, false, true>(
+    const uint8_t *, const uint8_t *, const uint8_t *, size_t);
+template uint8_t SIMDGameOfLife::aliveNeighbours<true, false, true, false>(
+    const uint8_t *, const uint8_t *, const uint8_t *, size_t);
+template uint8_t SIMDGameOfLife::aliveNeighbours<true, false, true, true>(
+    const uint8_t *, const uint8_t *, const uint8_t *, size_t);
+template uint8_t SIMDGameOfLife::aliveNeighbours<true, true, false, false>(
+    const uint8_t *, const uint8_t *, const uint8_t *, size_t);
+template uint8_t SIMDGameOfLife::aliveNeighbours<true, true, false, true>(
+    const uint8_t *, const uint8_t *, const uint8_t *, size_t);
+template uint8_t SIMDGameOfLife::aliveNeighbours<true, true, true, false>(
+    const uint8_t *, const uint8_t *, const uint8_t *, size_t);
+template uint8_t SIMDGameOfLife::aliveNeighbours<true, true, true, true>(
+    const uint8_t *, const uint8_t *, const uint8_t *, size_t);
+
+// Processes interior columns [1, cols-1) for a fully-surrounded interior row.
+void SIMDGameOfLife::processInteriorCells(const uint8_t *__restrict__ p,
+                                          const uint8_t *__restrict__ c,
+                                          const uint8_t *__restrict__ n,
+                                          uint8_t *__restrict__ o,
+                                          size_t cols) {
 #if GOL_USE_SIMD_LIB
     // ── std::simd (C++26) / std::experimental::simd ────────────────────────
     using Vec          = std::native_simd<uint8_t>;
@@ -228,9 +259,9 @@ static void processInteriorCells(const uint8_t *__restrict__ p,
 #endif
 }
 
-// Full interior row: left/right border columns + interior cells.
-static void processInteriorRow(const uint8_t *p, const uint8_t *c,
-                               const uint8_t *n, uint8_t *o, size_t cols) {
+void SIMDGameOfLife::processInteriorRow(const uint8_t *p, const uint8_t *c,
+                                        const uint8_t *n, uint8_t *o,
+                                        size_t cols) {
     o[0] = golRule(c[0], aliveNeighbours<true, true, false, true>(p, c, n, 0));
     o[cols - 1] =
         golRule(c[cols - 1],
@@ -238,10 +269,10 @@ static void processInteriorRow(const uint8_t *p, const uint8_t *c,
     processInteriorCells(p, c, n, o, cols);
 }
 
-// Border row: HasPrev=false for top, HasNext=false for bottom.
 template <bool HasPrev, bool HasNext>
-static void processBorderRow(const uint8_t *p, const uint8_t *c,
-                             const uint8_t *n, uint8_t *o, size_t cols) {
+void SIMDGameOfLife::processBorderRow(const uint8_t *p, const uint8_t *c,
+                                      const uint8_t *n, uint8_t *o,
+                                      size_t cols) {
     o[0] = golRule(c[0],
                    aliveNeighbours<HasPrev, HasNext, false, true>(p, c, n, 0));
     for (size_t col = 1; col + 1 < cols; ++col)
@@ -251,6 +282,15 @@ static void processBorderRow(const uint8_t *p, const uint8_t *c,
         c[cols - 1],
         aliveNeighbours<HasPrev, HasNext, true, false>(p, c, n, cols - 1));
 }
+
+template void SIMDGameOfLife::processBorderRow<false, true>(const uint8_t *,
+                                                            const uint8_t *,
+                                                            const uint8_t *,
+                                                            uint8_t *, size_t);
+template void SIMDGameOfLife::processBorderRow<true, false>(const uint8_t *,
+                                                            const uint8_t *,
+                                                            const uint8_t *,
+                                                            uint8_t *, size_t);
 
 // ── SIMDGameOfLife implementation ────────────────────────────────────────────
 

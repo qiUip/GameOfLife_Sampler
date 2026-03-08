@@ -1,4 +1,4 @@
-#include "gol.h"
+#include "gol_engine.h"
 
 #include <cstring>
 

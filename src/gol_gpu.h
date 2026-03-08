@@ -1,7 +1,7 @@
 #ifndef GOL_GPU_H
 #define GOL_GPU_H
 
-#include "gol.h"
+#include "gol_engine.h"
 
 // GPU API abstraction — function pointers avoid virtual dispatch pitfalls
 // in constructors and have negligible overhead since GPU API calls are

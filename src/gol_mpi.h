@@ -1,7 +1,7 @@
 #ifndef GOL_MPI_H
 #define GOL_MPI_H
 
-#include "gol.h"
+#include "gol_engine.h"
 #include "gol_utils.h"
 #include <string>
 

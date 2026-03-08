@@ -1,22 +1,20 @@
-#include "gol.h"
+#include "gol_engine.h"
 
 #include <cstdlib>
 #include <omp.h>
 
 // ── Bit-parallel helpers ────────────────────────────────────────────────────
 
-// rowSum3: 3-input per-bit adder -> 2-bit result (s1:s0) per bit position.
-static inline void rowSum3(uint64_t L, uint64_t C, uint64_t R, uint64_t &s1,
-                           uint64_t &s0) {
+void BitPackGameOfLife::rowSum3(uint64_t L, uint64_t C, uint64_t R,
+                                uint64_t &s1, uint64_t &s0) {
     uint64_t t = L ^ C;
     s0         = t ^ R;
     s1         = (L & C) | (t & R);
 }
 
-// sum9: add three 2-bit row-sums to a 4-bit result per bit position.
-static inline void sum9(uint64_t p1, uint64_t p0, uint64_t c1, uint64_t c0,
-                        uint64_t n1, uint64_t n0, uint64_t &o3, uint64_t &o2,
-                        uint64_t &o1, uint64_t &o0) {
+void BitPackGameOfLife::sum9(uint64_t p1, uint64_t p0, uint64_t c1, uint64_t c0,
+                             uint64_t n1, uint64_t n0, uint64_t &o3,
+                             uint64_t &o2, uint64_t &o1, uint64_t &o0) {
     uint64_t t0    = p0 ^ c0;
     uint64_t carry = p0 & c0;
     uint64_t q     = p1 ^ c1;

@@ -1,7 +1,7 @@
 #ifndef GOL_UTILS_H
 #define GOL_UTILS_H
 
-#include "gol.h"
+#include "gol_engine.h"
 #include <memory>
 #include <string>
 

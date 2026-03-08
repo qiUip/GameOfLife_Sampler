@@ -25,14 +25,10 @@ static std::vector<size_t> parseArgs(const std::string &args) {
 }
 
 static const std::pair<const char *, Engine> engineNames[] = {
-    {"simple", ENGINE_SIMPLE},
-    {"simd", ENGINE_SIMD},
-    {"bitpack", ENGINE_BITPACK},
-    {"cuda-simple", ENGINE_CUDA_SIMPLE},
-    {"cuda-tile", ENGINE_CUDA_TILE},
-    {"cuda-bitpack", ENGINE_CUDA_BITPACK},
-    {"hip-simple", ENGINE_HIP_SIMPLE},
-    {"hip-tile", ENGINE_HIP_TILE},
+    {"simple", ENGINE_SIMPLE},           {"simd", ENGINE_SIMD},
+    {"bitpack", ENGINE_BITPACK},         {"cuda-simple", ENGINE_CUDA_SIMPLE},
+    {"cuda-tile", ENGINE_CUDA_TILE},     {"cuda-bitpack", ENGINE_CUDA_BITPACK},
+    {"hip-simple", ENGINE_HIP_SIMPLE},   {"hip-tile", ENGINE_HIP_TILE},
     {"hip-bitpack", ENGINE_HIP_BITPACK},
 };
 
@@ -163,8 +159,7 @@ bool initSimulation(int argc, char **argv, SimParams &params) {
 
 // ── Engine factory ──────────────────────────────────────────────────────────
 
-template <typename GridType>
-static GridType makeGrid(const SimParams &params) {
+template <typename GridType> static GridType makeGrid(const SimParams &params) {
     if (params.randomInit) {
         std::mt19937 rng(params.seed);
         return GridType(params.fullGridRows, params.fullGridColumns,
@@ -178,7 +173,7 @@ static std::unique_ptr<GameOfLife> setupEngine(SimParams &params, int mpiRank,
                                                int mpiSize) {
     GridType grid;
     if (mpiRank == 0) {
-        grid = makeGrid<GridType>(params);
+        grid                   = makeGrid<GridType>(params);
         params.fullGridRows    = grid.getNumRows();
         params.fullGridColumns = grid.getNumCols();
     }
@@ -197,26 +192,34 @@ std::unique_ptr<GameOfLife> createEngine(SimParams &params, int mpiRank,
                                          int mpiSize) {
     switch (params.engine) {
         case ENGINE_SIMPLE:
-            return setupEngine<SimpleGameOfLife, Grid>(params, mpiRank, mpiSize);
+            return setupEngine<SimpleGameOfLife, Grid>(params, mpiRank,
+                                                       mpiSize);
         case ENGINE_SIMD:
             return setupEngine<SIMDGameOfLife, Grid>(params, mpiRank, mpiSize);
         case ENGINE_BITPACK:
-            return setupEngine<BitPackGameOfLife, BitGrid>(params, mpiRank, mpiSize);
+            return setupEngine<BitPackGameOfLife, BitGrid>(params, mpiRank,
+                                                           mpiSize);
 #if GOL_CUDA
         case ENGINE_CUDA_SIMPLE:
-            return setupEngine<CUDASimpleGameOfLife, Grid>(params, mpiRank, mpiSize);
+            return setupEngine<CUDASimpleGameOfLife, Grid>(params, mpiRank,
+                                                           mpiSize);
         case ENGINE_CUDA_TILE:
-            return setupEngine<CUDATileGameOfLife, Grid>(params, mpiRank, mpiSize);
+            return setupEngine<CUDATileGameOfLife, Grid>(params, mpiRank,
+                                                         mpiSize);
         case ENGINE_CUDA_BITPACK:
-            return setupEngine<CUDABitPackGameOfLife, BitGrid>(params, mpiRank, mpiSize);
+            return setupEngine<CUDABitPackGameOfLife, BitGrid>(params, mpiRank,
+                                                               mpiSize);
 #endif
 #if GOL_HIP
         case ENGINE_HIP_SIMPLE:
-            return setupEngine<HIPSimpleGameOfLife, Grid>(params, mpiRank, mpiSize);
+            return setupEngine<HIPSimpleGameOfLife, Grid>(params, mpiRank,
+                                                          mpiSize);
         case ENGINE_HIP_TILE:
-            return setupEngine<HIPTileGameOfLife, Grid>(params, mpiRank, mpiSize);
+            return setupEngine<HIPTileGameOfLife, Grid>(params, mpiRank,
+                                                        mpiSize);
         case ENGINE_HIP_BITPACK:
-            return setupEngine<HIPBitPackGameOfLife, BitGrid>(params, mpiRank, mpiSize);
+            return setupEngine<HIPBitPackGameOfLife, BitGrid>(params, mpiRank,
+                                                              mpiSize);
 #endif
         default:
             return nullptr;

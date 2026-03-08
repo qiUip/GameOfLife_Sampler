@@ -3,46 +3,46 @@ project(GameOfLife)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# On macOS with homebrew LLVM, use homebrew's libomp
-if(APPLE)
-  set(OpenMP_CXX_FLAGS "-fopenmp")
-  set(OpenMP_CXX_LIB_NAMES "omp")
-  set(OpenMP_omp_LIBRARY "/opt/homebrew/opt/libomp/lib/libomp.dylib")
-endif()
-
 find_package(OpenMP REQUIRED COMPONENTS CXX)
 find_package(MPI REQUIRED)
 
-add_executable(golSimulator
-    golSimulator.cpp
-    grid.cpp
-    gol_simple.cpp
-    gol_simd.cpp
-    gol_bitpack.cpp
-    gol_utils.cpp
-    gol_mpi.cpp
+# ── Shared library (CPU engines + utils, no MPI main) ────────────────────────
+
+add_library(gol_lib STATIC
+    src/grid.cpp
+    src/gol_simple.cpp
+    src/gol_simd.cpp
+    src/gol_bitpack.cpp
+    src/gol_utils.cpp
+    src/gol_mpi.cpp
 )
+target_include_directories(gol_lib PUBLIC src ${MPI_INCLUDE_PATH})
 # -march=native enables platform SIMD (NEON on Apple Silicon, AVX2 on x86).
 # For full optimisation build with: cmake -B build -DCMAKE_BUILD_TYPE=Release
-target_compile_options(golSimulator PRIVATE
+target_compile_options(gol_lib PRIVATE
   $<$<COMPILE_LANGUAGE:CXX>:-march=native>)
-target_link_libraries(golSimulator PRIVATE ${MPI_LIBRARIES} OpenMP::OpenMP_CXX)
-target_include_directories(golSimulator PRIVATE ${MPI_INCLUDE_PATH})
+target_link_libraries(gol_lib PUBLIC ${MPI_LIBRARIES} OpenMP::OpenMP_CXX)
 
-# Optional GPU support
+# ── Main executable ──────────────────────────────────────────────────────────
+
+add_executable(golSimulator src/golSimulator.cpp)
+target_link_libraries(golSimulator PRIVATE gol_lib)
+
+# ── Optional GPU support ─────────────────────────────────────────────────────
+
 set(GPU_SOURCES_ADDED FALSE)
 
 include(CheckLanguage)
 check_language(CUDA)
 if(CMAKE_CUDA_COMPILER)
   enable_language(CUDA)
-  target_sources(golSimulator PRIVATE gol_cuda.cu gol_gpu.cpp)
-  target_compile_definitions(golSimulator PRIVATE GOL_CUDA=1)
+  target_sources(gol_lib PRIVATE src/gol_cuda.cu src/gol_gpu.cpp)
+  target_compile_definitions(gol_lib PUBLIC GOL_CUDA=1)
   set(GPU_SOURCES_ADDED TRUE)
-  set_target_properties(golSimulator PROPERTIES
+  set_target_properties(gol_lib PROPERTIES
     CUDA_SEPARABLE_COMPILATION ON
     POSITION_INDEPENDENT_CODE ON)
-  target_compile_options(golSimulator PRIVATE
+  target_compile_options(gol_lib PRIVATE
     $<$<COMPILE_LANGUAGE:CUDA>:-arch=native -lineinfo>)
 endif()
 
@@ -52,11 +52,38 @@ endif()
 check_language(HIP)
 if(CMAKE_HIP_COMPILER)
   enable_language(HIP)
-  target_sources(golSimulator PRIVATE gol_hip.cpp)
+  target_sources(gol_lib PRIVATE src/gol_hip.cpp)
   if(NOT GPU_SOURCES_ADDED)
-    target_sources(golSimulator PRIVATE gol_gpu.cpp)
+    target_sources(gol_lib PRIVATE src/gol_gpu.cpp)
   endif()
-  target_compile_definitions(golSimulator PRIVATE GOL_HIP=1)
-  set_target_properties(golSimulator PROPERTIES HIP_ARCHITECTURES "${CMAKE_HIP_ARCHITECTURES}")
-  set_source_files_properties(gol_hip.cpp PROPERTIES LANGUAGE HIP)
+  target_compile_definitions(gol_lib PUBLIC GOL_HIP=1)
+  set_target_properties(gol_lib PROPERTIES HIP_ARCHITECTURES "${CMAKE_HIP_ARCHITECTURES}")
+  set_source_files_properties(src/gol_hip.cpp PROPERTIES LANGUAGE HIP)
 endif()
+
+# ── Tests (GTest + CTest) ────────────────────────────────────────────────────
+
+include(FetchContent)
+FetchContent_Declare(
+  googletest
+  GIT_REPOSITORY https://github.com/google/googletest.git
+  GIT_TAG        v1.15.2
+)
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(googletest)
+
+enable_testing()
+include(GoogleTest)
+
+function(add_gol_test name)
+  add_executable(${name} tests/${name}.cpp)
+  target_link_libraries(${name} PRIVATE gol_lib GTest::gtest_main)
+  target_compile_definitions(${name} PRIVATE
+    TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/data")
+  gtest_discover_tests(${name})
+endfunction()
+
+add_gol_test(test_grid)
+add_gol_test(test_engine)
+add_gol_test(test_utils)
+add_gol_test(test_integration)
