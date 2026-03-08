@@ -15,26 +15,26 @@
         }                                                                      \
     } while (0)
 
-static GpuOps hipOps() {
-  return {
-    [](void **ptr, size_t bytes) { HIP_CHECK(hipMalloc(ptr, bytes)); },
-    [](void *ptr) { hipFree(ptr); },
-    [](void *dst, const void *src, size_t bytes) {
-      HIP_CHECK(hipMemcpy(dst, src, bytes, hipMemcpyHostToDevice));
-    },
-    [](void *dst, const void *src, size_t bytes) {
-      HIP_CHECK(hipMemcpy(dst, src, bytes, hipMemcpyDeviceToHost));
-    },
-    []() { HIP_CHECK(hipDeviceSynchronize()); },
-    [](const char *ctx) {
-      hipError_t err = hipGetLastError();
-      if (err != hipSuccess) {
-        fprintf(stderr, "HIP error after %s: %s\n", ctx,
-                hipGetErrorString(err));
-        exit(EXIT_FAILURE);
-      }
-    }
-  };
+static GpuOps hipOps()
+{
+    return {[](void **ptr, size_t bytes) { HIP_CHECK(hipMalloc(ptr, bytes)); },
+            [](void *ptr) { hipFree(ptr); },
+            [](void *dst, const void *src, size_t bytes) {
+                HIP_CHECK(hipMemcpy(dst, src, bytes, hipMemcpyHostToDevice));
+            },
+            [](void *dst, const void *src, size_t bytes) {
+                HIP_CHECK(hipMemcpy(dst, src, bytes, hipMemcpyDeviceToHost));
+            },
+            []() { HIP_CHECK(hipDeviceSynchronize()); },
+            [](const char *ctx) {
+                hipError_t err = hipGetLastError();
+                if (err != hipSuccess)
+                {
+                    fprintf(stderr, "HIP error after %s: %s\n", ctx,
+                            hipGetErrorString(err));
+                    exit(EXIT_FAILURE);
+                }
+            }};
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -18,7 +18,7 @@ add_executable(golSimulator
 # For full optimisation build with: cmake -B build -DCMAKE_BUILD_TYPE=Release
 target_compile_options(golSimulator PRIVATE
   $<$<COMPILE_LANGUAGE:CXX>:-march=native>)
-target_link_libraries(golSimulator ${MPI_LIBRARIES} OpenMP::OpenMP_CXX)
+target_link_libraries(golSimulator PRIVATE ${MPI_LIBRARIES} OpenMP::OpenMP_CXX)
 target_include_directories(golSimulator PRIVATE ${MPI_INCLUDE_PATH})
 
 # Optional GPU support
@@ -38,13 +38,17 @@ if(CMAKE_CUDA_COMPILER)
     $<$<COMPILE_LANGUAGE:CUDA>:-arch=native -lineinfo>)
 endif()
 
-find_package(hip QUIET)
-if(hip_FOUND)
+if(NOT CMAKE_HIP_ARCHITECTURES)
+  set(CMAKE_HIP_ARCHITECTURES "gfx942")
+endif()
+check_language(HIP)
+if(CMAKE_HIP_COMPILER)
+  enable_language(HIP)
   target_sources(golSimulator PRIVATE gol_hip.cpp)
   if(NOT GPU_SOURCES_ADDED)
     target_sources(golSimulator PRIVATE gol_gpu.cpp)
   endif()
   target_compile_definitions(golSimulator PRIVATE GOL_HIP=1)
-  target_link_libraries(golSimulator PRIVATE hip::device)
+  set_target_properties(golSimulator PROPERTIES HIP_ARCHITECTURES "${CMAKE_HIP_ARCHITECTURES}")
   set_source_files_properties(gol_hip.cpp PROPERTIES LANGUAGE HIP)
 endif()
