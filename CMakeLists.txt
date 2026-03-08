@@ -3,6 +3,13 @@ project(GameOfLife)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# On macOS with homebrew LLVM, use homebrew's libomp
+if(APPLE)
+  set(OpenMP_CXX_FLAGS "-fopenmp")
+  set(OpenMP_CXX_LIB_NAMES "omp")
+  set(OpenMP_omp_LIBRARY "/opt/homebrew/opt/libomp/lib/libomp.dylib")
+endif()
+
 find_package(OpenMP REQUIRED COMPONENTS CXX)
 find_package(MPI REQUIRED)
 
