@@ -27,6 +27,7 @@ target_link_libraries(gol_lib PUBLIC ${MPI_LIBRARIES} OpenMP::OpenMP_CXX)
 
 add_executable(golSimulator src/golSimulator.cpp)
 target_link_libraries(golSimulator PRIVATE gol_lib)
+# CUDA_ARCHITECTURES set conditionally below if CUDA is found.
 
 # ── Optional GPU support ─────────────────────────────────────────────────────
 
@@ -41,10 +42,12 @@ if(CUDAToolkit_FOUND)
   target_compile_definitions(gol_lib PUBLIC GOL_CUDA=1)
   set(GPU_SOURCES_ADDED TRUE)
   set_target_properties(gol_lib PROPERTIES
+    CUDA_ARCHITECTURES native
     CUDA_SEPARABLE_COMPILATION ON
     POSITION_INDEPENDENT_CODE ON)
   target_compile_options(gol_lib PRIVATE
     $<$<COMPILE_LANGUAGE:CUDA>:-arch=native -lineinfo>)
+  set_target_properties(golSimulator PROPERTIES CUDA_ARCHITECTURES native)
 endif()
 
 set(CMAKE_HIP_ARCHITECTURES native)
