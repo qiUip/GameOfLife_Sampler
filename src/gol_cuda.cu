@@ -415,6 +415,20 @@ void CUDATileGameOfLife::launchKernel(const uint8_t *src, uint8_t *dst) {
 // ===========================================================================
 // 3. Bit-packed kernel (cuda-bitpack)
 // ===========================================================================
+//
+// GPU port of the CPU bitpack engine.  The same d_rowSum3 / d_sum9 full-adder
+// arithmetic computes 64-cell neighbourhood counts in parallel, but the CPU's
+// word-level loop is replaced by a 2D thread grid where each thread owns one
+// uint64_t word.
+//
+// Shared memory tile with a 1-word halo on each side is loaded via a
+// cooperative flat fill: all threads in the block participate, iterating over
+// the tile elements in strided fashion until the entire tile (including halo)
+// is populated.  After a __syncthreads() barrier, each thread shifts bits
+// across word boundaries using its neighbours in the shared memory tile,
+// computes the full-adder sum, and applies the GoL rule.
+//
+// Block 32x8 = 256 threads, tile 34x10 words, 2720 B shared memory.
 
 __device__ void d_rowSum3(uint64_t L, uint64_t C, uint64_t R, uint64_t &s1,
                           uint64_t &s0) {

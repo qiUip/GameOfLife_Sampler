@@ -32,6 +32,31 @@ template <class M, class V> V simd_select(M mask, V a, V b) {
 #include <immintrin.h>
 #endif
 
+// -- SIMD engine --------------------------------------------------------------
+//
+// Same byte-per-cell layout as the simple engine, but vectorises the interior
+// column loop so that multiple cells are processed per instruction.
+//
+// Compile-time dispatch selects the widest available SIMD backend:
+//   - std::simd (C++26) / std::experimental::simd — portable, width-agnostic
+//   - ARM NEON intrinsics — 16 bytes (128-bit)
+//   - AVX2 intrinsics — 32 bytes (256-bit)
+//   - AVX512BW intrinsics — 64 bytes (512-bit)
+//   - Scalar fallback — one cell at a time, however the contiguous byte layout
+//     and branch-free rule are amenable to compiler auto-vectorisation
+//
+// Boundary elimination: the aliveNeighbours function is templated on four
+// booleans (HasPrev, HasNext, HasLeft, HasRight) that indicate whether each
+// neighbour direction exists.  The compiler instantiates all 16 combinations
+// and eliminates dead branches at compile time, so interior cells pay zero
+// cost for boundary checks.
+//
+// The processInteriorCells function handles interior columns [1, cols-1) for
+// rows that have both a previous and next row.  This is where all the
+// throughput lives — the vectorised loop processes W cells per iteration
+// (W = native SIMD width).  Border rows fall back to scalar processing via
+// processBorderRow, which handles at most 2 rows per step.
+
 // -- SIMD helpers -------------------------------------------------------------
 
 uint8_t SIMDGameOfLife::golRule(uint8_t alive, uint8_t nb) {

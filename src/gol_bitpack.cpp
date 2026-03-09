@@ -3,6 +3,32 @@
 #include <cstdlib>
 #include <omp.h>
 
+// -- Bitpack engine -----------------------------------------------------------
+//
+// Packs 64 cells into a single uint64_t word, replacing the scalar 8-neighbour
+// sum with bit-parallel full-adder arithmetic.  Each bit position in a word
+// represents one cell; bitwise operations process all 64 cells simultaneously.
+//
+// The key primitives are:
+//
+//   rowSum3(L, C, R) — computes the 2-bit column sum of three horizontally
+//   adjacent words (left-shifted, centre, right-shifted).  The result is a
+//   pair (s1, s0) where each bit position holds the 2-bit count of alive
+//   neighbours in that column (0, 1, 2, or 3).
+//
+//   sum9(prev, curr, next) — combines three rowSum3 results (one per row)
+//   into a 4-bit total (o3, o2, o1, o0) representing the full 9-cell
+//   neighbourhood count (0–9) at each bit position.
+//
+// The GoL rule reduces to two masks:
+//   is3 = ~o3 & ~o2 & o1 & o0   (exactly 3 neighbours — birth or survival)
+//   is4 = ~o3 & o2 & ~o1 & ~o0  (exactly 4 = 3 neighbours + self — survival)
+//   result = is3 | (alive & is4)
+//
+// This gives a 64x theoretical throughput improvement over the byte engine per
+// arithmetic instruction, at the cost of more complex pack/unpack logic at
+// grid boundaries.
+
 // -- Bit-parallel helpers ----------------------------------------------------
 
 void BitPackGameOfLife::rowSum3(uint64_t L, uint64_t C, uint64_t R,

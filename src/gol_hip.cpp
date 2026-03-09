@@ -13,24 +13,33 @@
         }                                                                      \
     } while (0)
 
+static void hipAlloc(void **ptr, size_t bytes) {
+    HIP_CHECK(hipMalloc(ptr, bytes));
+}
+static void hipFreeWrap(void *ptr) {
+    (void)hipFree(ptr);
+}
+static void hipCopyH2D(void *dst, const void *src, size_t bytes) {
+    HIP_CHECK(hipMemcpy(dst, src, bytes, hipMemcpyHostToDevice));
+}
+static void hipCopyD2H(void *dst, const void *src, size_t bytes) {
+    HIP_CHECK(hipMemcpy(dst, src, bytes, hipMemcpyDeviceToHost));
+}
+static void hipSyncWrap() {
+    HIP_CHECK(hipDeviceSynchronize());
+}
+static void hipCheckLastWrap(const char *ctx) {
+    hipError_t err = hipGetLastError();
+    if (err != hipSuccess) {
+        fprintf(stderr, "HIP error after %s: %s\n", ctx,
+                hipGetErrorString(err));
+        exit(EXIT_FAILURE);
+    }
+}
+
 static GpuOps hipOps() {
-    return {[](void **ptr, size_t bytes) { HIP_CHECK(hipMalloc(ptr, bytes)); },
-            [](void *ptr) { (void)hipFree(ptr); },
-            [](void *dst, const void *src, size_t bytes) {
-                HIP_CHECK(hipMemcpy(dst, src, bytes, hipMemcpyHostToDevice));
-            },
-            [](void *dst, const void *src, size_t bytes) {
-                HIP_CHECK(hipMemcpy(dst, src, bytes, hipMemcpyDeviceToHost));
-            },
-            []() { HIP_CHECK(hipDeviceSynchronize()); },
-            [](const char *ctx) {
-                hipError_t err = hipGetLastError();
-                if (err != hipSuccess) {
-                    fprintf(stderr, "HIP error after %s: %s\n", ctx,
-                            hipGetErrorString(err));
-                    exit(EXIT_FAILURE);
-                }
-            }};
+    return {hipAlloc,   hipFreeWrap, hipCopyH2D,
+            hipCopyD2H, hipSyncWrap, hipCheckLastWrap};
 }
 
 // ===========================================================================
@@ -405,7 +414,20 @@ void HIPTileGameOfLife::launchKernel(const uint8_t *src, uint8_t *dst) {
 // ===========================================================================
 // 3. Bit-packed kernel (hip-bitpack)
 // ===========================================================================
-// Block 64×4 = 256 threads, tile 66×6, shmem 3168B.
+//
+// GPU port of the CPU bitpack engine, tuned for HIP wavefront dimensions.
+// Same d_rowSum3 / d_sum9 full-adder arithmetic as the CUDA bitpack kernel,
+// but the 2D thread grid is shaped for 64-thread wavefronts: each thread owns
+// one uint64_t word.
+//
+// Shared memory tile with a 1-word halo on each side is loaded via a
+// cooperative flat fill: all threads in the block participate, iterating over
+// the tile elements in strided fashion until the entire tile (including halo)
+// is populated.  After a __syncthreads() barrier, each thread shifts bits
+// across word boundaries using its neighbours in the shared memory tile,
+// computes the full-adder sum, and applies the GoL rule.
+//
+// Block 64x4 = 256 threads, tile 66x6 words, 3168 B shared memory.
 
 __device__ void d_rowSum3(uint64_t L, uint64_t C, uint64_t R, uint64_t &s1,
                           uint64_t &s0) {

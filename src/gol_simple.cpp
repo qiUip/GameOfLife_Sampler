@@ -2,6 +2,20 @@
 
 #include <cstring>
 
+// -- Simple engine (baseline) -------------------------------------------------
+//
+// The most direct implementation of Game of Life: one byte per cell, one thread
+// per row via OpenMP, scalar neighbour counting with boundary checks, and a
+// branch-based birth/survival rule.
+//
+// For each cell, the 8-neighbour offsets are iterated and bounds-checked at
+// runtime.  The GoL rule uses explicit if/else branches rather than the
+// branch-free arithmetic used in later engines.
+//
+// This engine exists as the baseline that motivates every subsequent
+// optimisation.  It is easy to read and verify, but leaves performance on the
+// table that the SIMD and bitpack engines address.
+
 SimpleGameOfLife::SimpleGameOfLife(Grid &grid)
     : currentGrid_(std::move(grid)),
       newGrid_(currentGrid_.getNumRows(), currentGrid_.getNumCols()) {

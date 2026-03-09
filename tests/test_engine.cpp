@@ -909,6 +909,28 @@ TEST(Engine, Blinker_SIMD) {
     testBlinkerPeriod2<SIMDGameOfLife>();
 }
 
+TEST(Engine, Blinker_BitPack) {
+    BitGrid g(5, 5);
+    g.setCell(2, 1, true);
+    g.setCell(2, 2, true);
+    g.setCell(2, 3, true);
+
+    BitGrid expected(5, 5);
+    expected.setCell(2, 1, true);
+    expected.setCell(2, 2, true);
+    expected.setCell(2, 3, true);
+
+    BitPackGameOfLife engine(g);
+    engine.takeStep();
+    engine.takeStep();
+
+    BitGrid after = readBackBit(engine, 5, 5);
+    for (size_t r = 0; r < 5; r++)
+        for (size_t c = 0; c < 5; c++)
+            ASSERT_EQ(after.getCell(r, c), expected.getCell(r, c))
+                << "mismatch at (" << r << "," << c << ")";
+}
+
 // -- Glider displacement -----------------------------------------------------
 
 TEST(Engine, GliderDisplacement_Simple) {
