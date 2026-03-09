@@ -5,7 +5,7 @@
 #include <mpi.h>
 #include <type_traits>
 
-// ── MPI datatype trait ──────────────────────────────────────────────────────
+// -- MPI datatype trait ------------------------------------------------------
 
 template <typename T> static MPI_Datatype mpiDatatype();
 template <> MPI_Datatype mpiDatatype<uint8_t>() {
@@ -15,7 +15,7 @@ template <> MPI_Datatype mpiDatatype<uint64_t>() {
     return MPI_UINT64_T;
 }
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+// -- Helpers -----------------------------------------------------------------
 
 static std::vector<std::pair<size_t, size_t>> getRowRanges(int numRanks,
                                                            size_t totalRows) {
@@ -41,7 +41,7 @@ static std::vector<std::pair<size_t, size_t>> getRowRanges(int numRanks,
     return ranges;
 }
 
-// ── MPI broadcast ───────────────────────────────────────────────────────────
+// -- MPI broadcast -----------------------------------------------------------
 
 void mpiBroadcastSimInfo(SimParams &params) {
     MPI_Bcast(&params.steps, 1, MPI_UNSIGNED, 0, MPI_COMM_WORLD);
@@ -52,7 +52,7 @@ void mpiBroadcastSimInfo(SimParams &params) {
     MPI_Bcast(&params.engine, 1, MPI_INT, 0, MPI_COMM_WORLD);
 }
 
-// ── Game-level MPI (use virtual base) ───────────────────────────────────────
+// -- Game-level MPI (use virtual base) ---------------------------------------
 
 void exchangeBoundaryRows(GameOfLife &game, int mpiRank, int mpiSize) {
     MPI_Datatype dtype =
@@ -139,7 +139,7 @@ void assembleOutput(GameOfLife &game, size_t fullRows, size_t fullCols,
                                     sleepTime, step, outfile);
 }
 
-// ── Grid-level MPI ──────────────────────────────────────────────────────────
+// -- Grid-level MPI ----------------------------------------------------------
 
 template <typename GridType>
 static void mpiSendGrid(const GridType &grid, int rank) {

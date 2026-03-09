@@ -11,7 +11,7 @@ static std::string dataFile(const char *name) {
     return std::string(TEST_DATA_DIR) + "/" + name;
 }
 
-// ── Grid: setCell / getCell ─────────────────────────────────────────────────
+// -- Grid: setCell / getCell -------------------------------------------------
 
 TEST(Grid, SetGetCell) {
     Grid g(6, 8);
@@ -89,7 +89,7 @@ TEST(Grid, SingleColumnGrid) {
     EXPECT_EQ(g.aliveCells(), 1u);
 }
 
-// ── BitGrid: setCell / getCell ──────────────────────────────────────────────
+// -- BitGrid: setCell / getCell ----------------------------------------------
 
 TEST(BitGrid, SetGetCell) {
     BitGrid bg(6, 8);
@@ -181,7 +181,7 @@ TEST(BitGrid, AliveCellsCounting) {
     EXPECT_EQ(bg.aliveCells(), 2u);
 }
 
-// ── Grid: file I/O ──────────────────────────────────────────────────────────
+// -- Grid: file I/O ----------------------------------------------------------
 
 TEST(Grid, LoadStillLifes) {
     Grid g(dataFile("still_lifes.txt"));
@@ -249,7 +249,7 @@ TEST(Grid, WriteReloadRoundTrip) {
     std::remove(tmpPath.c_str());
 }
 
-// ── Grid: setRow / getRowData ───────────────────────────────────────────────
+// -- Grid: setRow / getRowData -----------------------------------------------
 
 TEST(Grid, SetRowGetRowData) {
     Grid g(3, 4);

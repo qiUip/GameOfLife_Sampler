@@ -32,7 +32,7 @@ template <class M, class V> V simd_select(M mask, V a, V b) {
 #include <immintrin.h>
 #endif
 
-// ── SIMD helpers ─────────────────────────────────────────────────────────────
+// -- SIMD helpers -------------------------------------------------------------
 
 uint8_t SIMDGameOfLife::golRule(uint8_t alive, uint8_t nb) {
     return (nb == 3) | (alive & (nb == 2));
@@ -104,7 +104,7 @@ void SIMDGameOfLife::processInteriorCells(const uint8_t *__restrict__ p,
                                           uint8_t *__restrict__ o,
                                           size_t cols) {
 #if GOL_USE_SIMD_LIB
-    // ── std::simd (C++26) / std::experimental::simd ────────────────────────
+    // -- std::simd (C++26) / std::experimental::simd ------------------------
     using Vec          = std::native_simd<uint8_t>;
     constexpr size_t W = Vec::size();
     size_t col         = 1;
@@ -136,7 +136,7 @@ void SIMDGameOfLife::processInteriorCells(const uint8_t *__restrict__ p,
                          aliveNeighbours<true, true, true, true>(p, c, n, col));
 
 #elif defined(__ARM_NEON__) || defined(__ARM_NEON)
-    // ── ARM NEON intrinsics ───────────────────────────────────────────────
+    // -- ARM NEON intrinsics -----------------------------------------------
     constexpr size_t W = 16;
     size_t col         = 1;
     for (; col + W <= cols - 1; col += W) {
@@ -174,7 +174,7 @@ void SIMDGameOfLife::processInteriorCells(const uint8_t *__restrict__ p,
                          aliveNeighbours<true, true, true, true>(p, c, n, col));
 
 #elif defined(__AVX2__)
-    // ── AVX2 intrinsics ───────────────────────────────────────────────────
+    // -- AVX2 intrinsics ---------------------------------------------------
     constexpr size_t W = 32;
     size_t col         = 1;
     for (; col + W <= cols - 1; col += W) {
@@ -213,7 +213,7 @@ void SIMDGameOfLife::processInteriorCells(const uint8_t *__restrict__ p,
                          aliveNeighbours<true, true, true, true>(p, c, n, col));
 
 #elif defined(__AVX512BW__)
-    // ── AVX512BW intrinsics ───────────────────────────────────────────────
+    // -- AVX512BW intrinsics -----------------------------------------------
     constexpr size_t W = 64;
     size_t col         = 1;
     for (; col + W <= cols - 1; col += W) {
@@ -252,7 +252,7 @@ void SIMDGameOfLife::processInteriorCells(const uint8_t *__restrict__ p,
                          aliveNeighbours<true, true, true, true>(p, c, n, col));
 
 #else
-    // ── Scalar fallback ───────────────────────────────────────────────────
+    // -- Scalar fallback ---------------------------------------------------
     for (size_t col = 1; col < cols - 1; ++col)
         o[col] = golRule(c[col],
                          aliveNeighbours<true, true, true, true>(p, c, n, col));
@@ -292,7 +292,7 @@ template void SIMDGameOfLife::processBorderRow<true, false>(const uint8_t *,
                                                             const uint8_t *,
                                                             uint8_t *, size_t);
 
-// ── SIMDGameOfLife implementation ────────────────────────────────────────────
+// -- SIMDGameOfLife implementation --------------------------------------------
 
 SIMDGameOfLife::SIMDGameOfLife(Grid &grid)
     : currentGrid_(std::move(grid)),

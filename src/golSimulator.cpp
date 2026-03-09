@@ -44,7 +44,7 @@ int main(int argc, char **argv) {
             printStep(*game, "Generation:", 0);
     }
 
-    // ── Single-rank path: pure OpenMP, no MPI communication ─────────────────
+    // -- Single-rank path: pure OpenMP, no MPI communication -----------------
     if (mpiSize == 1) {
         auto t_start = std::chrono::high_resolution_clock::now();
 
@@ -68,7 +68,7 @@ int main(int argc, char **argv) {
         return EXIT_SUCCESS;
     }
 
-    // ── Multi-rank path: MPI domain decomposition + OpenMP ───────────────────
+    // -- Multi-rank path: MPI domain decomposition + OpenMP -------------------
     auto t_start = std::chrono::high_resolution_clock::now();
 
     for (unsigned int step = 0; step < params.steps; ++step) {

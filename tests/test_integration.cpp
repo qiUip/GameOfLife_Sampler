@@ -36,7 +36,7 @@ static std::vector<bool> extractBitGrid(GameOfLife &engine, size_t rows,
     return cells;
 }
 
-// ── Engine equivalence: all CPU engines produce same result ─────────────────
+// -- Engine equivalence: all CPU engines produce same result -----------------
 
 TEST(Integration, EngineEquivalence) {
     const size_t rows = 64, cols = 64;
@@ -72,7 +72,7 @@ TEST(Integration, EngineEquivalence) {
     ASSERT_EQ(simpleResult, bitpackResult) << "simple vs bitpack mismatch";
 }
 
-// ── Oscillator period verification ──────────────────────────────────────────
+// -- Oscillator period verification ------------------------------------------
 
 TEST(Integration, Oscillators_Period138) {
     Grid initial(dataFile("p138_oscillators.txt"));
@@ -93,7 +93,7 @@ TEST(Integration, Oscillators_Period138) {
     ASSERT_EQ(result, expected);
 }
 
-// ── Glider displacement with SIMD engine ────────────────────────────────────
+// -- Glider displacement with SIMD engine ------------------------------------
 
 TEST(Integration, GliderDisplacement_SIMD) {
     Grid g(dataFile("glider.txt"));

@@ -33,9 +33,9 @@ static GpuOps hipOps() {
             }};
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
+// ===========================================================================
 // Byte-per-cell kernels — two engines
-// ═══════════════════════════════════════════════════════════════════════════
+// ===========================================================================
 //
 //   1. hipGolKernelSimple — one thread per cell, reads neighbours directly
 //                           from global memory.  No shared memory.
@@ -58,7 +58,7 @@ __device__ uint8_t golRule(const uint8_t *tile, unsigned int tileW,
     return (nb == 3) | (alive & (nb == 2));
 }
 
-// ── 1. Simple kernel (hip-simple) ────────────────────────────────────────
+// -- 1. Simple kernel (hip-simple) ----------------------------------------
 //
 // The most direct GPU translation of the CPU approach.
 //
@@ -263,7 +263,7 @@ void HIPSimpleGameOfLife::launchKernel(const uint8_t *src, uint8_t *dst) {
     }
 }
 
-// ── 2. Tiled kernel (hip-tile) ───────────────────────────────────────────
+// -- 2. Tiled kernel (hip-tile) -------------------------------------------
 //
 // The simple kernel reads each cell from global memory up to 9 times (as a
 // neighbour of surrounding cells). Shared memory (LDS) eliminates this
@@ -315,7 +315,7 @@ __global__ void hipGolKernelTile(const uint8_t *src, uint8_t *dst,
     const unsigned int gc0_interior = blockIdx.x * HIP_BYTE_TILE_COLS;
     const int gr0                   = (int)(blockIdx.y * blockDim.y) - 1;
 
-    // Interior load (uint32_t vectorised) ──
+    // Interior load (uint32_t vectorised) --
     const unsigned int wordsPerRow = HIP_BYTE_TILE_COLS / 4; // 64
     const unsigned int totalWords  = wordsPerRow * tileH;    // 640
     for (unsigned int i = tid; i < totalWords; i += blockSize) {
@@ -340,7 +340,7 @@ __global__ void hipGolKernelTile(const uint8_t *src, uint8_t *dst,
         tile[tileBase + 3]    = (packed >> 24) & 0xFF;
     }
 
-    // ── Left and right halo columns (scalar, 2 × tileH bytes) ──
+    // -- Left and right halo columns (scalar, 2 × tileH bytes) --
     if (tid < tileH) {
         int gr = gr0 + (int)tid;
         int gc = (int)gc0_interior - 1;
@@ -361,7 +361,7 @@ __global__ void hipGolKernelTile(const uint8_t *src, uint8_t *dst,
 
     __syncthreads();
 
-    // ── Compute ──
+    // -- Compute --
     // Fast path: pack 4 results into uint32_t, single coalesced 4-byte store.
     // Slow path: byte-by-byte for the last tile column if cols % 256 != 0.
     // The branch is wavefront-uniform for all but the rightmost tile column,
@@ -402,9 +402,9 @@ void HIPTileGameOfLife::launchKernel(const uint8_t *src, uint8_t *dst) {
     HIP_CHECK(hipGetLastError());
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
+// ===========================================================================
 // 3. Bit-packed kernel (hip-bitpack)
-// ═══════════════════════════════════════════════════════════════════════════
+// ===========================================================================
 // Block 64×4 = 256 threads, tile 66×6, shmem 3168B.
 
 __device__ void d_rowSum3(uint64_t L, uint64_t C, uint64_t R, uint64_t &s1,

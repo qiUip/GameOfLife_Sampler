@@ -42,7 +42,7 @@ protected:
 extern template class GPUEngine<uint8_t, Grid>;
 extern template class GPUEngine<uint64_t, BitGrid>;
 
-// ── CUDA engines ────────────────────────────────────────────────────────────
+// -- CUDA engines ------------------------------------------------------------
 
 #if GOL_CUDA
 
@@ -75,7 +75,7 @@ protected:
 
 #endif // GOL_CUDA
 
-// ── HIP engines ─────────────────────────────────────────────────────────────
+// -- HIP engines -------------------------------------------------------------
 
 #if GOL_HIP
 

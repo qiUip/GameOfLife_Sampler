@@ -6,7 +6,7 @@
 #include <sstream>
 #include <vector>
 
-// ── Template helpers for Grid and BitGrid ───────────────────────────────────
+// -- Template helpers for Grid and BitGrid -----------------------------------
 
 struct FileData {
     size_t rows = 0, cols = 0;
@@ -72,7 +72,7 @@ static void writeToFileImpl(const GridType &grid, const std::string &filename) {
     }
 }
 
-// ── Grid implementation ─────────────────────────────────────────────────────
+// -- Grid implementation -----------------------------------------------------
 
 Grid::Grid(size_t rows, size_t cols) : GridStorage(rows, cols, cols) {
 }
@@ -122,7 +122,7 @@ void Grid::writeToFile(const std::string &filename) const {
     writeToFileImpl(*this, filename);
 }
 
-// ── BitGrid implementation ──────────────────────────────────────────────────
+// -- BitGrid implementation --------------------------------------------------
 
 BitGrid::BitGrid(size_t rows, size_t cols)
     : GridStorage(rows, cols, (cols + 63) / 64),

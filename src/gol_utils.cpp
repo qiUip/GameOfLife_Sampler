@@ -12,7 +12,7 @@
 #include <getopt.h>
 #include <unistd.h>
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+// -- Helpers -----------------------------------------------------------------
 
 static std::vector<size_t> parseArgs(const std::string &args) {
     std::vector<size_t> values;
@@ -32,7 +32,7 @@ static const std::pair<const char *, Engine> engineNames[] = {
     {"hip-bitpack", ENGINE_HIP_BITPACK},
 };
 
-// ── Print functions ─────────────────────────────────────────────────────────
+// -- Print functions ---------------------------------------------------------
 
 void printHelp() {
     std::cerr
@@ -157,7 +157,7 @@ bool initSimulation(int argc, char **argv, SimParams &params) {
     return true;
 }
 
-// ── Engine factory ──────────────────────────────────────────────────────────
+// -- Engine factory ----------------------------------------------------------
 
 template <typename GridType> static GridType makeGrid(const SimParams &params) {
     if (params.randomInit) {
@@ -226,7 +226,7 @@ std::unique_ptr<GameOfLife> createEngine(SimParams &params, int mpiRank,
     }
 }
 
-// ── Print utilities ─────────────────────────────────────────────────────────
+// -- Print utilities ---------------------------------------------------------
 
 template <typename T>
 void printStep(const T &grid, const std::string &label, int value,

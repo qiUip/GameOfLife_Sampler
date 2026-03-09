@@ -42,9 +42,9 @@ static GpuOps cudaOps() {
             cudaCopyD2H, cudaSyncWrap, cudaCheckLastWrap};
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
+// ===========================================================================
 // Byte-per-cell kernels — two engines
-// ═══════════════════════════════════════════════════════════════════════════
+// ===========================================================================
 //
 //   1. golKernelSimple — one thread per cell, reads neighbours directly
 //                        from global memory.  No shared memory.
@@ -67,7 +67,7 @@ __device__ uint8_t golRule(const uint8_t *tile, unsigned int tileW,
     return (nb == 3) | (alive & (nb == 2));
 }
 
-// ── 1. Simple kernel (cuda-simple) ───────────────────────────────────────
+// -- 1. Simple kernel (cuda-simple) ---------------------------------------
 //
 // The most direct GPU translation of the CPU approach.
 //
@@ -273,7 +273,7 @@ void CUDASimpleGameOfLife::launchKernel(const uint8_t *src, uint8_t *dst) {
     }
 }
 
-// ── 2. Tiled kernel (cuda-tile) ──────────────────────────────────────────
+// -- 2. Tiled kernel (cuda-tile) ------------------------------------------
 //
 // The simple kernel reads each cell from global memory up to 9 times (as a
 // neighbour of surrounding cells). Shared memory eliminates this redundancy:
@@ -326,7 +326,7 @@ __global__ void golKernelTile(const uint8_t *src, uint8_t *dst,
     const unsigned int gc0_interior = blockIdx.x * BYTE_TILE_COLS;
     const int gr0                   = (int)(blockIdx.y * blockDim.y) - 1;
 
-    // Interior load (uint32_t vectorised) ──
+    // Interior load (uint32_t vectorised) --
     const unsigned int wordsPerRow = BYTE_TILE_COLS / 4;  // 32
     const unsigned int totalWords  = wordsPerRow * tileH; // 320
     for (unsigned int i = tid; i < totalWords; i += blockSize) {
@@ -351,7 +351,7 @@ __global__ void golKernelTile(const uint8_t *src, uint8_t *dst,
         tile[tileBase + 3]    = (packed >> 24) & 0xFF;
     }
 
-    // ── Left and right halo columns (scalar, 2 × tileH bytes) ──
+    // -- Left and right halo columns (scalar, 2 × tileH bytes) --
     if (tid < tileH) {
         int gr = gr0 + (int)tid;
         int gc = (int)gc0_interior - 1;
@@ -372,7 +372,7 @@ __global__ void golKernelTile(const uint8_t *src, uint8_t *dst,
 
     __syncthreads();
 
-    // ── Compute ──
+    // -- Compute --
     // Fast path: pack 4 results into uint32_t, single coalesced 4-byte store.
     // Slow path: byte-by-byte for the last tile column if cols % 128 != 0.
     // The branch is warp-uniform for all but the rightmost tile column,
@@ -412,9 +412,9 @@ void CUDATileGameOfLife::launchKernel(const uint8_t *src, uint8_t *dst) {
     CUDA_CHECK(cudaGetLastError());
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
+// ===========================================================================
 // 3. Bit-packed kernel (cuda-bitpack)
-// ═══════════════════════════════════════════════════════════════════════════
+// ===========================================================================
 
 __device__ void d_rowSum3(uint64_t L, uint64_t C, uint64_t R, uint64_t &s1,
                           uint64_t &s0) {

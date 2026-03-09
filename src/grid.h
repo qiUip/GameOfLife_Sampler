@@ -6,7 +6,7 @@
 #include <random>
 #include <string>
 
-// ── Common grid storage ─────────────────────────────────────────────────────
+// -- Common grid storage -----------------------------------------------------
 
 template <typename T> class GridStorage {
 public:
@@ -66,7 +66,7 @@ protected:
     T *data_;
 };
 
-// ── Byte grid (1 byte per cell) ─────────────────────────────────────────────
+// -- Byte grid (1 byte per cell) ---------------------------------------------
 
 class Grid : public GridStorage<uint8_t> {
 public:
@@ -97,7 +97,7 @@ public:
     void writeToFile(const std::string &filename) const;
 };
 
-// ── Bit-packed grid (1 bit per cell, 64 cells per uint64_t) ─────────────────
+// -- Bit-packed grid (1 bit per cell, 64 cells per uint64_t) -----------------
 
 class BitGrid : public GridStorage<uint64_t> {
 public:

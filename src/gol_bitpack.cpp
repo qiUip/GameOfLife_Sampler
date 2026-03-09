@@ -3,7 +3,7 @@
 #include <cstdlib>
 #include <omp.h>
 
-// ── Bit-parallel helpers ────────────────────────────────────────────────────
+// -- Bit-parallel helpers ----------------------------------------------------
 
 void BitPackGameOfLife::rowSum3(uint64_t L, uint64_t C, uint64_t R,
                                 uint64_t &s1, uint64_t &s0) {
@@ -30,7 +30,7 @@ void BitPackGameOfLife::sum9(uint64_t p1, uint64_t p0, uint64_t c1, uint64_t c0,
     o3          = t2 & carry;
 }
 
-// ── BitPackGameOfLife implementation ────────────────────────────────────────
+// -- BitPackGameOfLife implementation ----------------------------------------
 
 BitPackGameOfLife::BitPackGameOfLife(BitGrid &grid)
     : current_(std::move(grid)),

@@ -4,7 +4,7 @@
 #include "grid.h"
 #include <string>
 
-// ── Virtual base class for Game of Life engines ──────────────────────────────
+// -- Virtual base class for Game of Life engines ------------------------------
 
 enum class CellKind { Byte, BitPacked };
 
@@ -37,7 +37,7 @@ protected:
     size_t rows_, cols_;
 };
 
-// ── Simple engine (basic OpenMP, no SIMD) ────────────────────────────────────
+// -- Simple engine (basic OpenMP, no SIMD) ------------------------------------
 
 class SimpleGameOfLife : public GameOfLife {
 public:
@@ -58,7 +58,7 @@ private:
     Grid newGrid_;
 };
 
-// ── Byte/SIMD engine ─────────────────────────────────────────────────────────
+// -- Byte/SIMD engine ---------------------------------------------------------
 
 class SIMDGameOfLife : public GameOfLife {
 public:
@@ -96,7 +96,7 @@ private:
     Grid newGrid_;
 };
 
-// ── Bit-packed engine ────────────────────────────────────────────────────────
+// -- Bit-packed engine --------------------------------------------------------
 
 class BitPackGameOfLife : public GameOfLife {
 public:

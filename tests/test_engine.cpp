@@ -11,7 +11,7 @@ static std::string dataFile(const char *name) {
     return std::string(TEST_DATA_DIR) + "/" + name;
 }
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+// -- Helpers -----------------------------------------------------------------
 
 // Read back byte engine state into a Grid
 static Grid readBack(GameOfLife &engine, size_t rows, size_t cols) {
@@ -44,11 +44,11 @@ static std::vector<std::pair<size_t, size_t>> alivePositions(const Grid &g) {
     return cells;
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
+// =============================================================================
 // SIMD unit tests for static helper functions
-// ═════════════════════════════════════════════════════════════════════════════
+// =============================================================================
 
-// ── golRule exhaustive ───────────────────────────────────────────────────────
+// -- golRule exhaustive -------------------------------------------------------
 
 TEST(GolRule, DeadCellAllCounts) {
     for (uint8_t nb = 0; nb <= 8; ++nb) {
@@ -70,7 +70,7 @@ TEST(GolRule, AliveCellAllCounts) {
     }
 }
 
-// ── aliveNeighbours ──────────────────────────────────────────────────────────
+// -- aliveNeighbours ----------------------------------------------------------
 
 // Interior: all 8 neighbours present. 3×5 rows, query col 2.
 TEST(AliveNeighbours, Interior) {
@@ -165,7 +165,7 @@ TEST(AliveNeighbours, RightEdge) {
         4);
 }
 
-// ── processInteriorCells ─────────────────────────────────────────────────────
+// -- processInteriorCells -----------------------------------------------------
 
 TEST(ProcessInteriorCells, KnownOutput) {
     // 3 rows × 8 cols. Interior columns are [1..6].
@@ -192,7 +192,7 @@ TEST(ProcessInteriorCells, KnownOutput) {
         EXPECT_EQ(o[i], 0) << "col " << i;
 }
 
-// ── processBorderRow ─────────────────────────────────────────────────────────
+// -- processBorderRow ---------------------------------------------------------
 
 TEST(ProcessBorderRow, TopRow) {
     const size_t cols = 5;
@@ -239,7 +239,7 @@ TEST(ProcessBorderRow, BottomRow) {
     EXPECT_EQ(o[4], 0);
 }
 
-// ── processInteriorRow ───────────────────────────────────────────────────────
+// -- processInteriorRow -------------------------------------------------------
 
 TEST(ProcessInteriorRow, FullRow) {
     const size_t cols = 6;
@@ -270,11 +270,11 @@ TEST(ProcessInteriorRow, FullRow) {
     EXPECT_EQ(o[5], 0);
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
+// =============================================================================
 // BitPack unit tests for static helper functions
-// ═════════════════════════════════════════════════════════════════════════════
+// =============================================================================
 
-// ── rowSum3 ──────────────────────────────────────────────────────────────────
+// -- rowSum3 ------------------------------------------------------------------
 
 TEST(RowSum3, AllZeros) {
     uint64_t s1, s0;
@@ -323,7 +323,7 @@ TEST(RowSum3, MixedBits) {
     EXPECT_EQ(s0 & 0xF, 0b0110u); // bits 1,2
 }
 
-// ── sum9 ─────────────────────────────────────────────────────────────────────
+// -- sum9 ---------------------------------------------------------------------
 
 TEST(Sum9, AllZeros) {
     uint64_t o3, o2, o1, o0;
@@ -367,9 +367,9 @@ TEST(Sum9, SumNine) {
     EXPECT_EQ(o0, all);
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
+// =============================================================================
 // SIMD takeStep tests
-// ═════════════════════════════════════════════════════════════════════════════
+// =============================================================================
 
 // Use a wide grid to ensure processInteriorCells is exercised (cols >> SIMD
 // width)
@@ -414,9 +414,9 @@ TEST(SIMD, ScalarTailHandling) {
     EXPECT_FALSE(after.getCell(2, 10));
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
+// =============================================================================
 // BitPack takeStep tests
-// ═════════════════════════════════════════════════════════════════════════════
+// =============================================================================
 
 TEST(BitPack, Birth) {
     BitGrid bg(5, 5);
@@ -515,9 +515,9 @@ TEST(BitPack, CornerBirth) {
         << "corner (0,0) with 3 neighbours should be born";
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
+// =============================================================================
 // GoL rule tests via takeStep on crafted grids (Simple + SIMD)
-// ═════════════════════════════════════════════════════════════════════════════
+// =============================================================================
 
 // Dead cell with exactly 3 neighbours → born
 template <typename EngineT> void testBirth() {
@@ -683,7 +683,7 @@ TEST(Rule, DeadWith4_SIMD) {
     testDeadWith4<SIMDGameOfLife>();
 }
 
-// ── Boundary cell tests ─────────────────────────────────────────────────────
+// -- Boundary cell tests -----------------------------------------------------
 
 // Top-left corner: alive with 1 neighbour → dies
 template <typename EngineT> void testCornerTopLeft() {
@@ -845,11 +845,11 @@ TEST(Boundary, BottomEdge_SIMD) {
     testBottomEdge<SIMDGameOfLife>();
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
+// =============================================================================
 // Multi-step / pattern tests (all engines)
-// ═════════════════════════════════════════════════════════════════════════════
+// =============================================================================
 
-// ── Still lifes ─────────────────────────────────────────────────────────────
+// -- Still lifes -------------------------------------------------------------
 
 template <typename EngineT> void testStillLifesStable() {
     Grid before(dataFile("still_lifes.txt"));
@@ -887,7 +887,7 @@ TEST(Engine, StillLifes_BitPack) {
                 << "mismatch at (" << r << "," << c << ")";
 }
 
-// ── Blinker period-2 ────────────────────────────────────────────────────────
+// -- Blinker period-2 --------------------------------------------------------
 
 template <typename EngineT> void testBlinkerPeriod2() {
     Grid g(5, 5);
@@ -909,7 +909,7 @@ TEST(Engine, Blinker_SIMD) {
     testBlinkerPeriod2<SIMDGameOfLife>();
 }
 
-// ── Glider displacement ─────────────────────────────────────────────────────
+// -- Glider displacement -----------------------------------------------------
 
 TEST(Engine, GliderDisplacement_Simple) {
     Grid ref(dataFile("glider.txt"));
@@ -932,7 +932,7 @@ TEST(Engine, GliderDisplacement_Simple) {
     }
 }
 
-// ── All-dead stays dead ─────────────────────────────────────────────────────
+// -- All-dead stays dead -----------------------------------------------------
 
 TEST(Engine, AllDeadStaysDead_Simple) {
     Grid g(10, 10);
