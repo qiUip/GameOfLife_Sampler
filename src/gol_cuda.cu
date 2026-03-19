@@ -1,4 +1,5 @@
 #include "gol_gpu.h"
+#include "gol_gpu_test_wrappers.h"
 
 #include <cstdio>
 #include <cuda_runtime.h>
@@ -25,6 +26,19 @@ static void cudaCopyH2D(void *dst, const void *src, size_t bytes) {
 static void cudaCopyD2H(void *dst, const void *src, size_t bytes) {
     CUDA_CHECK(cudaMemcpy(dst, src, bytes, cudaMemcpyDeviceToHost));
 }
+static void cudaCopy2D_H2D(void *dst, size_t dpitch, const void *src,
+                            size_t spitch, size_t width, size_t height) {
+    CUDA_CHECK(cudaMemcpy2D(dst, dpitch, src, spitch, width, height,
+                            cudaMemcpyHostToDevice));
+}
+static void cudaCopy2D_D2H(void *dst, size_t dpitch, const void *src,
+                            size_t spitch, size_t width, size_t height) {
+    CUDA_CHECK(cudaMemcpy2D(dst, dpitch, src, spitch, width, height,
+                            cudaMemcpyDeviceToHost));
+}
+static void cudaMemsetWrap(void *ptr, int value, size_t bytes) {
+    CUDA_CHECK(cudaMemset(ptr, value, bytes));
+}
 static void cudaSyncWrap() {
     CUDA_CHECK(cudaDeviceSynchronize());
 }
@@ -38,8 +52,9 @@ static void cudaCheckLastWrap(const char *ctx) {
 }
 
 static GpuOps cudaOps() {
-    return {cudaAlloc,   cudaFreeWrap, cudaCopyH2D,
-            cudaCopyD2H, cudaSyncWrap, cudaCheckLastWrap};
+    return {cudaAlloc,      cudaFreeWrap,    cudaCopyH2D,
+            cudaCopyD2H,    cudaCopy2D_H2D,  cudaCopy2D_D2H,
+            cudaMemsetWrap, cudaSyncWrap,     cudaCheckLastWrap};
 }
 
 // ===========================================================================
@@ -52,6 +67,13 @@ static GpuOps cudaOps() {
 //                        vectorised loads and stores.
 //
 // Both kernels use the same branch-free GoL rule.
+//
+// All byte kernels take separate `cols` and `stride` parameters.
+// `cols` is the logical grid width (used for boundary checks).
+// `stride` is the device buffer row pitch in bytes (>= cols, always a
+// multiple of 4 so that uint32_t loads/stores are naturally aligned).
+// The padding columns between cols and stride are kept at zero (dead cells)
+// and are never written by the kernels.
 
 // Branch-free GoL rule: count 8 neighbours, apply birth/survival.
 // Used directly by the tiled kernels (from shared memory tile), and as the
@@ -122,13 +144,14 @@ static constexpr int SIMPLE_BLOCK_Y = 8;
 // to a valid interior cell (row in [1, rows-2], col in [1, cols-2]).
 // The launch grid is rounded down to full blocks only.
 __global__ void golKernelSimpleInterior(const uint8_t *src, uint8_t *dst,
-                                        unsigned int cols) {
+                                        unsigned int cols,
+                                        unsigned int stride) {
     unsigned int col = 1 + blockIdx.x * blockDim.x + threadIdx.x;
     unsigned int row = 1 + blockIdx.y * blockDim.y + threadIdx.y;
-    unsigned int idx = row * cols + col;
+    unsigned int idx = row * stride + col;
 
-    unsigned int up = idx - cols;
-    unsigned int dn = idx + cols;
+    unsigned int up = idx - stride;
+    unsigned int dn = idx + stride;
     unsigned int nb = src[up - 1] + src[up] + src[up + 1] + src[idx - 1] +
                       src[idx + 1] + src[dn - 1] + src[dn] + src[dn + 1];
 
@@ -142,6 +165,7 @@ __global__ void golKernelSimpleInterior(const uint8_t *src, uint8_t *dst,
 // have no measurable impact.
 __global__ void golKernelSimpleBorder(const uint8_t *src, uint8_t *dst,
                                       unsigned int rows, unsigned int cols,
+                                      unsigned int stride,
                                       unsigned int interiorCols,
                                       unsigned int interiorRows) {
     unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -201,7 +225,7 @@ __global__ void golKernelSimpleBorder(const uint8_t *src, uint8_t *dst,
         col            = 1 + s % interiorCols;
     }
 
-    unsigned int idx = row * cols + col;
+    unsigned int idx = row * stride + col;
     unsigned int nb  = 0;
     bool hasUp       = row > 0;
     bool hasDown     = row < rows - 1;
@@ -209,7 +233,7 @@ __global__ void golKernelSimpleBorder(const uint8_t *src, uint8_t *dst,
     bool hasRight    = col < cols - 1;
 
     if (hasUp) {
-        unsigned int up = idx - cols;
+        unsigned int up = idx - stride;
         if (hasLeft)
             nb += src[up - 1];
         nb += src[up];
@@ -221,7 +245,7 @@ __global__ void golKernelSimpleBorder(const uint8_t *src, uint8_t *dst,
     if (hasRight)
         nb += src[idx + 1];
     if (hasDown) {
-        unsigned int dn = idx + cols;
+        unsigned int dn = idx + stride;
         if (hasLeft)
             nb += src[dn - 1];
         nb += src[dn];
@@ -244,6 +268,7 @@ CellKind CUDASimpleGameOfLife::getCellKind() const {
 void CUDASimpleGameOfLife::launchKernel(const uint8_t *src, uint8_t *dst) {
     unsigned int r = static_cast<unsigned int>(rows_);
     unsigned int c = static_cast<unsigned int>(cols_);
+    unsigned int s = static_cast<unsigned int>(deviceStride_);
 
     // Interior: only full blocks — every thread maps to a valid cell.
     unsigned int intCols = ((c - 2) / SIMPLE_BLOCK_X) * SIMPLE_BLOCK_X;
@@ -252,7 +277,7 @@ void CUDASimpleGameOfLife::launchKernel(const uint8_t *src, uint8_t *dst) {
     if (intCols > 0 && intRows > 0) {
         dim3 block(SIMPLE_BLOCK_X, SIMPLE_BLOCK_Y);
         dim3 grid(intCols / SIMPLE_BLOCK_X, intRows / SIMPLE_BLOCK_Y);
-        golKernelSimpleInterior<<<grid, block>>>(src, dst, c);
+        golKernelSimpleInterior<<<grid, block>>>(src, dst, c, s);
         CUDA_CHECK(cudaGetLastError());
     }
 
@@ -267,8 +292,8 @@ void CUDASimpleGameOfLife::launchKernel(const uint8_t *src, uint8_t *dst) {
     if (totalBorder > 0) {
         int bThreads = 256;
         int bBlocks  = (totalBorder + bThreads - 1) / bThreads;
-        golKernelSimpleBorder<<<bBlocks, bThreads>>>(src, dst, r, c, intCols,
-                                                     intRows);
+        golKernelSimpleBorder<<<bBlocks, bThreads>>>(src, dst, r, c, s,
+                                                     intCols, intRows);
         CUDA_CHECK(cudaGetLastError());
     }
 }
@@ -307,6 +332,10 @@ void CUDASimpleGameOfLife::launchKernel(const uint8_t *src, uint8_t *dst) {
 // falls through to byte-by-byte load and store paths. This affects only 1 out
 // of ceil(cols/128) tile columns, so the branch cost is negligible.
 //
+// Stride padding: the device buffer row pitch (stride) is rounded up to a
+// multiple of 4 bytes so that every row starts at a uint32_t-aligned address.
+// Padding columns are kept at zero and are never written by the kernel.
+//
 static constexpr int BYTE_BLOCK_X          = 32;
 static constexpr int BYTE_BLOCK_Y          = 8;
 static constexpr int BYTE_CELLS_PER_THREAD = 4;
@@ -314,7 +343,8 @@ static constexpr int BYTE_TILE_COLS =
     BYTE_BLOCK_X * BYTE_CELLS_PER_THREAD; // 128
 
 __global__ void golKernelTile(const uint8_t *src, uint8_t *dst,
-                              unsigned int rows, unsigned int cols) {
+                              unsigned int rows, unsigned int cols,
+                              unsigned int stride) {
     extern __shared__ uint8_t tile[];
     const unsigned int tileW     = BYTE_TILE_COLS + 2; // 130
     const unsigned int tileH     = blockDim.y + 2;     // 10
@@ -337,11 +367,11 @@ __global__ void golKernelTile(const uint8_t *src, uint8_t *dst,
         uint32_t packed      = 0;
         if (gr >= 0 && (unsigned)gr < rows && gc + 3 < cols)
             packed = *reinterpret_cast<const uint32_t *>(
-                &src[(unsigned)gr * cols + gc]);
+                &src[(unsigned)gr * stride + gc]);
         else if (gr >= 0 && (unsigned)gr < rows && gc < cols) {
             // Partial word at right edge — load available bytes
             for (unsigned int b = 0; b < 4 && gc + b < cols; b++)
-                packed |= (uint32_t)src[(unsigned)gr * cols + gc + b]
+                packed |= (uint32_t)src[(unsigned)gr * stride + gc + b]
                           << (b * 8);
         }
         unsigned int tileBase = tileRow * tileW + 1 + wordIdx * 4;
@@ -357,7 +387,7 @@ __global__ void golKernelTile(const uint8_t *src, uint8_t *dst,
         int gc = (int)gc0_interior - 1;
         tile[tid * tileW] =
             (gr >= 0 && (unsigned)gr < rows && gc >= 0 && (unsigned)gc < cols)
-                ? src[(unsigned)gr * cols + (unsigned)gc]
+                ? src[(unsigned)gr * stride + (unsigned)gc]
                 : 0;
     }
     if (tid >= tileH && tid < 2 * tileH) {
@@ -366,7 +396,7 @@ __global__ void golKernelTile(const uint8_t *src, uint8_t *dst,
         unsigned int gc      = gc0_interior + BYTE_TILE_COLS;
         tile[haloIdx * tileW + tileW - 1] =
             (gr >= 0 && (unsigned)gr < rows && gc < cols)
-                ? src[(unsigned)gr * cols + gc]
+                ? src[(unsigned)gr * stride + gc]
                 : 0;
     }
 
@@ -386,10 +416,11 @@ __global__ void golKernelTile(const uint8_t *src, uint8_t *dst,
         uint32_t result = 0;
         for (int k = 0; k < 4; k++)
             result |= (unsigned)golRule(tile, tileW, tx + k, ty) << (k * 8);
-        *reinterpret_cast<uint32_t *>(&dst[row * cols + baseCol]) = result;
+        *reinterpret_cast<uint32_t *>(&dst[row * stride + baseCol]) = result;
     } else if (row < rows && baseCol < cols) {
         for (int k = 0; k < 4 && baseCol + k < cols; k++)
-            dst[row * cols + baseCol + k] = golRule(tile, tileW, tx + k, ty);
+            dst[row * stride + baseCol + k] =
+                golRule(tile, tileW, tx + k, ty);
     }
 }
 
@@ -406,9 +437,10 @@ void CUDATileGameOfLife::launchKernel(const uint8_t *src, uint8_t *dst) {
     dim3 grid((cols_ + BYTE_TILE_COLS - 1) / BYTE_TILE_COLS,
               (rows_ + BYTE_BLOCK_Y - 1) / BYTE_BLOCK_Y);
     size_t shmem = (BYTE_TILE_COLS + 2) * (BYTE_BLOCK_Y + 2) * sizeof(uint8_t);
-    golKernelTile<<<grid, block, shmem>>>(src, dst,
-                                          static_cast<unsigned int>(rows_),
-                                          static_cast<unsigned int>(cols_));
+    golKernelTile<<<grid, block, shmem>>>(
+        src, dst, static_cast<unsigned int>(rows_),
+        static_cast<unsigned int>(cols_),
+        static_cast<unsigned int>(deviceStride_));
     CUDA_CHECK(cudaGetLastError());
 }
 
@@ -532,7 +564,7 @@ CellKind CUDABitPackGameOfLife::getCellKind() const {
 
 void CUDABitPackGameOfLife::launchKernel(const uint64_t *src, uint64_t *dst) {
     dim3 block(BIT_BLOCK_X, BIT_BLOCK_Y);
-    dim3 grid((stride_ + BIT_BLOCK_X - 1) / BIT_BLOCK_X,
+    dim3 grid((deviceStride_ + BIT_BLOCK_X - 1) / BIT_BLOCK_X,
               (rows_ + BIT_BLOCK_Y - 1) / BIT_BLOCK_Y);
     size_t shmem = (BIT_BLOCK_X + 2) * (BIT_BLOCK_Y + 2) * sizeof(uint64_t);
 
@@ -541,6 +573,117 @@ void CUDABitPackGameOfLife::launchKernel(const uint64_t *src, uint64_t *dst) {
 
     golBitPackKernel<<<grid, block, shmem>>>(
         src, dst, static_cast<unsigned int>(rows_),
-        static_cast<unsigned int>(stride_), lastMask);
+        static_cast<unsigned int>(deviceStride_), lastMask);
     CUDA_CHECK(cudaGetLastError());
+}
+
+// ===========================================================================
+// Test wrapper functions — single-step kernel execution on host data
+// ===========================================================================
+
+// Compute padded stride for byte buffers (multiple of 4).
+static size_t padStride(size_t cols) {
+    return (cols + 3) & ~size_t(3);
+}
+
+void cudaSimpleKernelStep(const uint8_t *in, uint8_t *out,
+                          size_t rows, size_t cols) {
+    size_t stride = padStride(cols);
+    size_t bytes  = rows * stride;
+    uint8_t *d_in, *d_out;
+    CUDA_CHECK(cudaMalloc(&d_in, bytes));
+    CUDA_CHECK(cudaMalloc(&d_out, bytes));
+    CUDA_CHECK(cudaMemset(d_in, 0, bytes));
+    CUDA_CHECK(cudaMemset(d_out, 0, bytes));
+    CUDA_CHECK(cudaMemcpy2D(d_in, stride, in, cols, cols, rows,
+                            cudaMemcpyHostToDevice));
+
+    unsigned int r = static_cast<unsigned int>(rows);
+    unsigned int c = static_cast<unsigned int>(cols);
+    unsigned int s = static_cast<unsigned int>(stride);
+
+    unsigned int intCols = ((c > 2) ? ((c - 2) / SIMPLE_BLOCK_X) * SIMPLE_BLOCK_X : 0);
+    unsigned int intRows = ((c > 2 && r > 2) ? ((r - 2) / SIMPLE_BLOCK_Y) * SIMPLE_BLOCK_Y : 0);
+
+    if (intCols > 0 && intRows > 0) {
+        dim3 block(SIMPLE_BLOCK_X, SIMPLE_BLOCK_Y);
+        dim3 grid(intCols / SIMPLE_BLOCK_X, intRows / SIMPLE_BLOCK_Y);
+        golKernelSimpleInterior<<<grid, block>>>(d_in, d_out, c, s);
+        CUDA_CHECK(cudaGetLastError());
+    }
+
+    unsigned int perim       = 2 * c + 2 * (r - 2);
+    unsigned int rightW      = (c >= 2 + intCols) ? (c - 2 - intCols) : 0;
+    unsigned int rightCells  = (r >= 2) ? rightW * (r - 2) : 0;
+    unsigned int bottomH     = (r >= 2 + intRows) ? (r - 2 - intRows) : 0;
+    unsigned int bottomCells = bottomH * intCols;
+    unsigned int totalBorder = perim + rightCells + bottomCells;
+
+    if (totalBorder > 0) {
+        int bThreads = 256;
+        int bBlocks  = (totalBorder + bThreads - 1) / bThreads;
+        golKernelSimpleBorder<<<bBlocks, bThreads>>>(d_in, d_out, r, c, s,
+                                                     intCols, intRows);
+        CUDA_CHECK(cudaGetLastError());
+    }
+
+    CUDA_CHECK(cudaDeviceSynchronize());
+    CUDA_CHECK(cudaMemcpy2D(out, cols, d_out, stride, cols, rows,
+                            cudaMemcpyDeviceToHost));
+    cudaFree(d_in);
+    cudaFree(d_out);
+}
+
+void cudaTileKernelStep(const uint8_t *in, uint8_t *out,
+                        size_t rows, size_t cols) {
+    size_t stride = padStride(cols);
+    size_t bytes  = rows * stride;
+    uint8_t *d_in, *d_out;
+    CUDA_CHECK(cudaMalloc(&d_in, bytes));
+    CUDA_CHECK(cudaMalloc(&d_out, bytes));
+    CUDA_CHECK(cudaMemset(d_in, 0, bytes));
+    CUDA_CHECK(cudaMemset(d_out, 0, bytes));
+    CUDA_CHECK(cudaMemcpy2D(d_in, stride, in, cols, cols, rows,
+                            cudaMemcpyHostToDevice));
+
+    dim3 block(BYTE_BLOCK_X, BYTE_BLOCK_Y);
+    dim3 grid((static_cast<unsigned int>(cols) + BYTE_TILE_COLS - 1) / BYTE_TILE_COLS,
+              (static_cast<unsigned int>(rows) + BYTE_BLOCK_Y - 1) / BYTE_BLOCK_Y);
+    size_t shmem = (BYTE_TILE_COLS + 2) * (BYTE_BLOCK_Y + 2) * sizeof(uint8_t);
+    golKernelTile<<<grid, block, shmem>>>(
+        d_in, d_out, static_cast<unsigned int>(rows),
+        static_cast<unsigned int>(cols), static_cast<unsigned int>(stride));
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaDeviceSynchronize());
+    CUDA_CHECK(cudaMemcpy2D(out, cols, d_out, stride, cols, rows,
+                            cudaMemcpyDeviceToHost));
+    cudaFree(d_in);
+    cudaFree(d_out);
+}
+
+void cudaBitPackKernelStep(const uint64_t *in, uint64_t *out,
+                           size_t rows, size_t stride, size_t cols) {
+    size_t bytes = rows * stride * sizeof(uint64_t);
+    uint64_t *d_in, *d_out;
+    CUDA_CHECK(cudaMalloc(&d_in, bytes));
+    CUDA_CHECK(cudaMalloc(&d_out, bytes));
+    CUDA_CHECK(cudaMemcpy(d_in, in, bytes, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemset(d_out, 0, bytes));
+
+    dim3 block(BIT_BLOCK_X, BIT_BLOCK_Y);
+    dim3 grid((static_cast<unsigned int>(stride) + BIT_BLOCK_X - 1) / BIT_BLOCK_X,
+              (static_cast<unsigned int>(rows) + BIT_BLOCK_Y - 1) / BIT_BLOCK_Y);
+    size_t shmem = (BIT_BLOCK_X + 2) * (BIT_BLOCK_Y + 2) * sizeof(uint64_t);
+
+    uint64_t lastMask =
+        (cols % 64 == 0) ? ~uint64_t(0) : (uint64_t(1) << (cols % 64)) - 1;
+
+    golBitPackKernel<<<grid, block, shmem>>>(
+        d_in, d_out, static_cast<unsigned int>(rows),
+        static_cast<unsigned int>(stride), lastMask);
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaDeviceSynchronize());
+    CUDA_CHECK(cudaMemcpy(out, d_out, bytes, cudaMemcpyDeviceToHost));
+    cudaFree(d_in);
+    cudaFree(d_out);
 }

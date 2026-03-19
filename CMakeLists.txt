@@ -93,3 +93,11 @@ add_gol_test(test_grid)
 add_gol_test(test_engine)
 add_gol_test(test_utils)
 add_gol_test(test_integration)
+
+if(CUDAToolkit_FOUND)
+  add_gol_test(test_gpu_cuda)
+endif()
+
+if(hip_FOUND)
+  add_gol_test(test_gpu_hip)
+endif()
