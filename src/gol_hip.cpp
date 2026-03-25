@@ -27,12 +27,12 @@ static void hipCopyD2H(void *dst, const void *src, size_t bytes) {
     HIP_CHECK(hipMemcpy(dst, src, bytes, hipMemcpyDeviceToHost));
 }
 static void hipCopy2D_H2D(void *dst, size_t dpitch, const void *src,
-                           size_t spitch, size_t width, size_t height) {
+                          size_t spitch, size_t width, size_t height) {
     HIP_CHECK(hipMemcpy2D(dst, dpitch, src, spitch, width, height,
                           hipMemcpyHostToDevice));
 }
 static void hipCopy2D_D2H(void *dst, size_t dpitch, const void *src,
-                           size_t spitch, size_t width, size_t height) {
+                          size_t spitch, size_t width, size_t height) {
     HIP_CHECK(hipMemcpy2D(dst, dpitch, src, spitch, width, height,
                           hipMemcpyDeviceToHost));
 }
@@ -52,9 +52,9 @@ static void hipCheckLastWrap(const char *ctx) {
 }
 
 static GpuOps hipOps() {
-    return {hipAlloc,      hipFreeWrap,    hipCopyH2D,
-            hipCopyD2H,    hipCopy2D_H2D,  hipCopy2D_D2H,
-            hipMemsetWrap, hipSyncWrap,     hipCheckLastWrap};
+    return {hipAlloc,      hipFreeWrap,   hipCopyH2D,
+            hipCopyD2H,    hipCopy2D_H2D, hipCopy2D_D2H,
+            hipMemsetWrap, hipSyncWrap,   hipCheckLastWrap};
 }
 
 // ===========================================================================
@@ -417,8 +417,7 @@ __global__ void hipGolKernelTile(const uint8_t *src, uint8_t *dst,
         *reinterpret_cast<uint32_t *>(&dst[row * stride + baseCol]) = result;
     } else if (row < rows && baseCol < cols) {
         for (int k = 0; k < 4 && baseCol + k < cols; k++)
-            dst[row * stride + baseCol + k] =
-                golRule(tile, tileW, tx + k, ty);
+            dst[row * stride + baseCol + k] = golRule(tile, tileW, tx + k, ty);
     }
 }
 
@@ -586,8 +585,8 @@ static size_t padStride(size_t cols) {
     return (cols + 3) & ~size_t(3);
 }
 
-void hipSimpleKernelStep(const uint8_t *in, uint8_t *out,
-                         size_t rows, size_t cols) {
+void hipSimpleKernelStep(const uint8_t *in, uint8_t *out, size_t rows,
+                         size_t cols) {
     size_t stride = padStride(cols);
     size_t bytes  = rows * stride;
     uint8_t *d_in, *d_out;
@@ -595,15 +594,18 @@ void hipSimpleKernelStep(const uint8_t *in, uint8_t *out,
     HIP_CHECK(hipMalloc(&d_out, bytes));
     HIP_CHECK(hipMemset(d_in, 0, bytes));
     HIP_CHECK(hipMemset(d_out, 0, bytes));
-    HIP_CHECK(hipMemcpy2D(d_in, stride, in, cols, cols, rows,
-                          hipMemcpyHostToDevice));
+    HIP_CHECK(
+        hipMemcpy2D(d_in, stride, in, cols, cols, rows, hipMemcpyHostToDevice));
 
     unsigned int r = static_cast<unsigned int>(rows);
     unsigned int c = static_cast<unsigned int>(cols);
     unsigned int s = static_cast<unsigned int>(stride);
 
-    unsigned int intCols = ((c > 2) ? ((c - 2) / HIP_SIMPLE_BLOCK_X) * HIP_SIMPLE_BLOCK_X : 0);
-    unsigned int intRows = ((c > 2 && r > 2) ? ((r - 2) / HIP_SIMPLE_BLOCK_Y) * HIP_SIMPLE_BLOCK_Y : 0);
+    unsigned int intCols =
+        ((c > 2) ? ((c - 2) / HIP_SIMPLE_BLOCK_X) * HIP_SIMPLE_BLOCK_X : 0);
+    unsigned int intRows =
+        ((c > 2 && r > 2) ? ((r - 2) / HIP_SIMPLE_BLOCK_Y) * HIP_SIMPLE_BLOCK_Y
+                          : 0);
 
     if (intCols > 0 && intRows > 0) {
         dim3 block(HIP_SIMPLE_BLOCK_X, HIP_SIMPLE_BLOCK_Y);
@@ -634,8 +636,8 @@ void hipSimpleKernelStep(const uint8_t *in, uint8_t *out,
     hipFree(d_out);
 }
 
-void hipTileKernelStep(const uint8_t *in, uint8_t *out,
-                       size_t rows, size_t cols) {
+void hipTileKernelStep(const uint8_t *in, uint8_t *out, size_t rows,
+                       size_t cols) {
     size_t stride = padStride(cols);
     size_t bytes  = rows * stride;
     uint8_t *d_in, *d_out;
@@ -643,13 +645,16 @@ void hipTileKernelStep(const uint8_t *in, uint8_t *out,
     HIP_CHECK(hipMalloc(&d_out, bytes));
     HIP_CHECK(hipMemset(d_in, 0, bytes));
     HIP_CHECK(hipMemset(d_out, 0, bytes));
-    HIP_CHECK(hipMemcpy2D(d_in, stride, in, cols, cols, rows,
-                          hipMemcpyHostToDevice));
+    HIP_CHECK(
+        hipMemcpy2D(d_in, stride, in, cols, cols, rows, hipMemcpyHostToDevice));
 
     dim3 block(HIP_BYTE_BLOCK_X, HIP_BYTE_BLOCK_Y);
-    dim3 grid((static_cast<unsigned int>(cols) + HIP_BYTE_TILE_COLS - 1) / HIP_BYTE_TILE_COLS,
-              (static_cast<unsigned int>(rows) + HIP_BYTE_BLOCK_Y - 1) / HIP_BYTE_BLOCK_Y);
-    size_t shmem = (HIP_BYTE_TILE_COLS + 2) * (HIP_BYTE_BLOCK_Y + 2) * sizeof(uint8_t);
+    dim3 grid((static_cast<unsigned int>(cols) + HIP_BYTE_TILE_COLS - 1) /
+                  HIP_BYTE_TILE_COLS,
+              (static_cast<unsigned int>(rows) + HIP_BYTE_BLOCK_Y - 1) /
+                  HIP_BYTE_BLOCK_Y);
+    size_t shmem =
+        (HIP_BYTE_TILE_COLS + 2) * (HIP_BYTE_BLOCK_Y + 2) * sizeof(uint8_t);
     hipGolKernelTile<<<grid, block, shmem>>>(
         d_in, d_out, static_cast<unsigned int>(rows),
         static_cast<unsigned int>(cols), static_cast<unsigned int>(stride));
@@ -661,8 +666,8 @@ void hipTileKernelStep(const uint8_t *in, uint8_t *out,
     hipFree(d_out);
 }
 
-void hipBitPackKernelStep(const uint64_t *in, uint64_t *out,
-                          size_t rows, size_t stride, size_t cols) {
+void hipBitPackKernelStep(const uint64_t *in, uint64_t *out, size_t rows,
+                          size_t stride, size_t cols) {
     size_t bytes = rows * stride * sizeof(uint64_t);
     uint64_t *d_in, *d_out;
     HIP_CHECK(hipMalloc(&d_in, bytes));
@@ -671,9 +676,12 @@ void hipBitPackKernelStep(const uint64_t *in, uint64_t *out,
     HIP_CHECK(hipMemset(d_out, 0, bytes));
 
     dim3 block(HIP_BIT_BLOCK_X, HIP_BIT_BLOCK_Y);
-    dim3 grid((static_cast<unsigned int>(stride) + HIP_BIT_BLOCK_X - 1) / HIP_BIT_BLOCK_X,
-              (static_cast<unsigned int>(rows) + HIP_BIT_BLOCK_Y - 1) / HIP_BIT_BLOCK_Y);
-    size_t shmem = (HIP_BIT_BLOCK_X + 2) * (HIP_BIT_BLOCK_Y + 2) * sizeof(uint64_t);
+    dim3 grid((static_cast<unsigned int>(stride) + HIP_BIT_BLOCK_X - 1) /
+                  HIP_BIT_BLOCK_X,
+              (static_cast<unsigned int>(rows) + HIP_BIT_BLOCK_Y - 1) /
+                  HIP_BIT_BLOCK_Y);
+    size_t shmem =
+        (HIP_BIT_BLOCK_X + 2) * (HIP_BIT_BLOCK_Y + 2) * sizeof(uint64_t);
 
     uint64_t lastMask =
         (cols % 64 == 0) ? ~uint64_t(0) : (uint64_t(1) << (cols % 64)) - 1;

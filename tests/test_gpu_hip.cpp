@@ -64,8 +64,12 @@ template <typename EngineT> void testBirth() {
         << "dead cell with 3 neighbours should be born";
 }
 
-TEST(HIPRule, Birth_Simple) { testBirth<HIPSimpleGameOfLife>(); }
-TEST(HIPRule, Birth_Tile) { testBirth<HIPTileGameOfLife>(); }
+TEST(HIPRule, Birth_Simple) {
+    testBirth<HIPSimpleGameOfLife>();
+}
+TEST(HIPRule, Birth_Tile) {
+    testBirth<HIPTileGameOfLife>();
+}
 
 template <typename EngineT> void testSurvival2() {
     Grid g(5, 5);
@@ -79,8 +83,12 @@ template <typename EngineT> void testSurvival2() {
         << "alive cell with 2 neighbours should survive";
 }
 
-TEST(HIPRule, Survival2_Simple) { testSurvival2<HIPSimpleGameOfLife>(); }
-TEST(HIPRule, Survival2_Tile) { testSurvival2<HIPTileGameOfLife>(); }
+TEST(HIPRule, Survival2_Simple) {
+    testSurvival2<HIPSimpleGameOfLife>();
+}
+TEST(HIPRule, Survival2_Tile) {
+    testSurvival2<HIPTileGameOfLife>();
+}
 
 template <typename EngineT> void testSurvival3() {
     Grid g(5, 5);
@@ -95,8 +103,12 @@ template <typename EngineT> void testSurvival3() {
         << "alive cell with 3 neighbours should survive";
 }
 
-TEST(HIPRule, Survival3_Simple) { testSurvival3<HIPSimpleGameOfLife>(); }
-TEST(HIPRule, Survival3_Tile) { testSurvival3<HIPTileGameOfLife>(); }
+TEST(HIPRule, Survival3_Simple) {
+    testSurvival3<HIPSimpleGameOfLife>();
+}
+TEST(HIPRule, Survival3_Tile) {
+    testSurvival3<HIPTileGameOfLife>();
+}
 
 template <typename EngineT> void testUnderpopulation0() {
     Grid g(5, 5);
@@ -108,8 +120,12 @@ template <typename EngineT> void testUnderpopulation0() {
         << "alive cell with 0 neighbours should die";
 }
 
-TEST(HIPRule, Underpop0_Simple) { testUnderpopulation0<HIPSimpleGameOfLife>(); }
-TEST(HIPRule, Underpop0_Tile) { testUnderpopulation0<HIPTileGameOfLife>(); }
+TEST(HIPRule, Underpop0_Simple) {
+    testUnderpopulation0<HIPSimpleGameOfLife>();
+}
+TEST(HIPRule, Underpop0_Tile) {
+    testUnderpopulation0<HIPTileGameOfLife>();
+}
 
 template <typename EngineT> void testUnderpopulation1() {
     Grid g(5, 5);
@@ -122,8 +138,12 @@ template <typename EngineT> void testUnderpopulation1() {
         << "alive cell with 1 neighbour should die";
 }
 
-TEST(HIPRule, Underpop1_Simple) { testUnderpopulation1<HIPSimpleGameOfLife>(); }
-TEST(HIPRule, Underpop1_Tile) { testUnderpopulation1<HIPTileGameOfLife>(); }
+TEST(HIPRule, Underpop1_Simple) {
+    testUnderpopulation1<HIPSimpleGameOfLife>();
+}
+TEST(HIPRule, Underpop1_Tile) {
+    testUnderpopulation1<HIPTileGameOfLife>();
+}
 
 template <typename EngineT> void testOvercrowding4() {
     Grid g(5, 5);
@@ -139,8 +159,12 @@ template <typename EngineT> void testOvercrowding4() {
         << "alive cell with 4 neighbours should die";
 }
 
-TEST(HIPRule, Overcrowding_Simple) { testOvercrowding4<HIPSimpleGameOfLife>(); }
-TEST(HIPRule, Overcrowding_Tile) { testOvercrowding4<HIPTileGameOfLife>(); }
+TEST(HIPRule, Overcrowding_Simple) {
+    testOvercrowding4<HIPSimpleGameOfLife>();
+}
+TEST(HIPRule, Overcrowding_Tile) {
+    testOvercrowding4<HIPTileGameOfLife>();
+}
 
 template <typename EngineT> void testDeadStaysDead() {
     Grid g(5, 5);
@@ -153,8 +177,12 @@ template <typename EngineT> void testDeadStaysDead() {
         << "dead cell with 2 neighbours should stay dead";
 }
 
-TEST(HIPRule, DeadStaysDead_Simple) { testDeadStaysDead<HIPSimpleGameOfLife>(); }
-TEST(HIPRule, DeadStaysDead_Tile) { testDeadStaysDead<HIPTileGameOfLife>(); }
+TEST(HIPRule, DeadStaysDead_Simple) {
+    testDeadStaysDead<HIPSimpleGameOfLife>();
+}
+TEST(HIPRule, DeadStaysDead_Tile) {
+    testDeadStaysDead<HIPTileGameOfLife>();
+}
 
 template <typename EngineT> void testDeadWith4() {
     Grid g(5, 5);
@@ -169,8 +197,12 @@ template <typename EngineT> void testDeadWith4() {
         << "dead cell with 4 neighbours should stay dead";
 }
 
-TEST(HIPRule, DeadWith4_Simple) { testDeadWith4<HIPSimpleGameOfLife>(); }
-TEST(HIPRule, DeadWith4_Tile) { testDeadWith4<HIPTileGameOfLife>(); }
+TEST(HIPRule, DeadWith4_Simple) {
+    testDeadWith4<HIPSimpleGameOfLife>();
+}
+TEST(HIPRule, DeadWith4_Tile) {
+    testDeadWith4<HIPTileGameOfLife>();
+}
 
 // -- Boundary tests -----------------------------------------------------------
 
@@ -185,8 +217,12 @@ template <typename EngineT> void testCornerTopLeft() {
         << "corner (0,0) with 1 neighbour should die";
 }
 
-TEST(HIPBoundary, CornerTopLeft_Simple) { testCornerTopLeft<HIPSimpleGameOfLife>(); }
-TEST(HIPBoundary, CornerTopLeft_Tile) { testCornerTopLeft<HIPTileGameOfLife>(); }
+TEST(HIPBoundary, CornerTopLeft_Simple) {
+    testCornerTopLeft<HIPSimpleGameOfLife>();
+}
+TEST(HIPBoundary, CornerTopLeft_Tile) {
+    testCornerTopLeft<HIPTileGameOfLife>();
+}
 
 template <typename EngineT> void testCornerTopRight() {
     Grid g(5, 8);
@@ -200,8 +236,12 @@ template <typename EngineT> void testCornerTopRight() {
         << "corner (0,7) with 3 neighbours should be born";
 }
 
-TEST(HIPBoundary, CornerTopRight_Simple) { testCornerTopRight<HIPSimpleGameOfLife>(); }
-TEST(HIPBoundary, CornerTopRight_Tile) { testCornerTopRight<HIPTileGameOfLife>(); }
+TEST(HIPBoundary, CornerTopRight_Simple) {
+    testCornerTopRight<HIPSimpleGameOfLife>();
+}
+TEST(HIPBoundary, CornerTopRight_Tile) {
+    testCornerTopRight<HIPTileGameOfLife>();
+}
 
 template <typename EngineT> void testCornerBottomLeft() {
     Grid g(5, 5);
@@ -215,8 +255,12 @@ template <typename EngineT> void testCornerBottomLeft() {
         << "corner (4,0) with 3 neighbours should be born";
 }
 
-TEST(HIPBoundary, CornerBottomLeft_Simple) { testCornerBottomLeft<HIPSimpleGameOfLife>(); }
-TEST(HIPBoundary, CornerBottomLeft_Tile) { testCornerBottomLeft<HIPTileGameOfLife>(); }
+TEST(HIPBoundary, CornerBottomLeft_Simple) {
+    testCornerBottomLeft<HIPSimpleGameOfLife>();
+}
+TEST(HIPBoundary, CornerBottomLeft_Tile) {
+    testCornerBottomLeft<HIPTileGameOfLife>();
+}
 
 template <typename EngineT> void testCornerBottomRight() {
     Grid g(5, 5);
@@ -230,8 +274,12 @@ template <typename EngineT> void testCornerBottomRight() {
         << "corner (4,4) with 2 neighbours should survive";
 }
 
-TEST(HIPBoundary, CornerBottomRight_Simple) { testCornerBottomRight<HIPSimpleGameOfLife>(); }
-TEST(HIPBoundary, CornerBottomRight_Tile) { testCornerBottomRight<HIPTileGameOfLife>(); }
+TEST(HIPBoundary, CornerBottomRight_Simple) {
+    testCornerBottomRight<HIPSimpleGameOfLife>();
+}
+TEST(HIPBoundary, CornerBottomRight_Tile) {
+    testCornerBottomRight<HIPTileGameOfLife>();
+}
 
 template <typename EngineT> void testTopEdge() {
     Grid g(5, 8);
@@ -245,8 +293,12 @@ template <typename EngineT> void testTopEdge() {
         << "top edge cell with 3 neighbours should be born";
 }
 
-TEST(HIPBoundary, TopEdge_Simple) { testTopEdge<HIPSimpleGameOfLife>(); }
-TEST(HIPBoundary, TopEdge_Tile) { testTopEdge<HIPTileGameOfLife>(); }
+TEST(HIPBoundary, TopEdge_Simple) {
+    testTopEdge<HIPSimpleGameOfLife>();
+}
+TEST(HIPBoundary, TopEdge_Tile) {
+    testTopEdge<HIPTileGameOfLife>();
+}
 
 template <typename EngineT> void testLeftEdge() {
     Grid g(5, 5);
@@ -260,8 +312,12 @@ template <typename EngineT> void testLeftEdge() {
         << "left edge cell with 3 neighbours should be born";
 }
 
-TEST(HIPBoundary, LeftEdge_Simple) { testLeftEdge<HIPSimpleGameOfLife>(); }
-TEST(HIPBoundary, LeftEdge_Tile) { testLeftEdge<HIPTileGameOfLife>(); }
+TEST(HIPBoundary, LeftEdge_Simple) {
+    testLeftEdge<HIPSimpleGameOfLife>();
+}
+TEST(HIPBoundary, LeftEdge_Tile) {
+    testLeftEdge<HIPTileGameOfLife>();
+}
 
 template <typename EngineT> void testRightEdge() {
     Grid g(5, 8);
@@ -275,8 +331,12 @@ template <typename EngineT> void testRightEdge() {
         << "right edge cell with 3 neighbours should be born";
 }
 
-TEST(HIPBoundary, RightEdge_Simple) { testRightEdge<HIPSimpleGameOfLife>(); }
-TEST(HIPBoundary, RightEdge_Tile) { testRightEdge<HIPTileGameOfLife>(); }
+TEST(HIPBoundary, RightEdge_Simple) {
+    testRightEdge<HIPSimpleGameOfLife>();
+}
+TEST(HIPBoundary, RightEdge_Tile) {
+    testRightEdge<HIPTileGameOfLife>();
+}
 
 template <typename EngineT> void testBottomEdge() {
     Grid g(5, 8);
@@ -290,8 +350,12 @@ template <typename EngineT> void testBottomEdge() {
         << "bottom edge cell with 3 neighbours should be born";
 }
 
-TEST(HIPBoundary, BottomEdge_Simple) { testBottomEdge<HIPSimpleGameOfLife>(); }
-TEST(HIPBoundary, BottomEdge_Tile) { testBottomEdge<HIPTileGameOfLife>(); }
+TEST(HIPBoundary, BottomEdge_Simple) {
+    testBottomEdge<HIPSimpleGameOfLife>();
+}
+TEST(HIPBoundary, BottomEdge_Tile) {
+    testBottomEdge<HIPTileGameOfLife>();
+}
 
 // -- Pattern tests ------------------------------------------------------------
 
@@ -306,8 +370,12 @@ template <typename EngineT> void testStillLifesStable() {
     ASSERT_EQ(alivePositions(after), expected);
 }
 
-TEST(HIPPattern, StillLifes_Simple) { testStillLifesStable<HIPSimpleGameOfLife>(); }
-TEST(HIPPattern, StillLifes_Tile) { testStillLifesStable<HIPTileGameOfLife>(); }
+TEST(HIPPattern, StillLifes_Simple) {
+    testStillLifesStable<HIPSimpleGameOfLife>();
+}
+TEST(HIPPattern, StillLifes_Tile) {
+    testStillLifesStable<HIPTileGameOfLife>();
+}
 
 template <typename EngineT> void testBlinkerPeriod2() {
     Grid g(5, 5);
@@ -322,8 +390,12 @@ template <typename EngineT> void testBlinkerPeriod2() {
     ASSERT_EQ(alivePositions(after), expected);
 }
 
-TEST(HIPPattern, Blinker_Simple) { testBlinkerPeriod2<HIPSimpleGameOfLife>(); }
-TEST(HIPPattern, Blinker_Tile) { testBlinkerPeriod2<HIPTileGameOfLife>(); }
+TEST(HIPPattern, Blinker_Simple) {
+    testBlinkerPeriod2<HIPSimpleGameOfLife>();
+}
+TEST(HIPPattern, Blinker_Tile) {
+    testBlinkerPeriod2<HIPTileGameOfLife>();
+}
 
 template <typename EngineT> void testAllDeadStaysDead() {
     Grid g(10, 10);
@@ -334,8 +406,12 @@ template <typename EngineT> void testAllDeadStaysDead() {
     EXPECT_EQ(after.aliveCells(), 0u);
 }
 
-TEST(HIPPattern, AllDead_Simple) { testAllDeadStaysDead<HIPSimpleGameOfLife>(); }
-TEST(HIPPattern, AllDead_Tile) { testAllDeadStaysDead<HIPTileGameOfLife>(); }
+TEST(HIPPattern, AllDead_Simple) {
+    testAllDeadStaysDead<HIPSimpleGameOfLife>();
+}
+TEST(HIPPattern, AllDead_Tile) {
+    testAllDeadStaysDead<HIPTileGameOfLife>();
+}
 
 template <typename EngineT> void testGliderDisplacement() {
     Grid ref(dataFile("glider.txt"));
@@ -357,8 +433,12 @@ template <typename EngineT> void testGliderDisplacement() {
     }
 }
 
-TEST(HIPPattern, Glider_Simple) { testGliderDisplacement<HIPSimpleGameOfLife>(); }
-TEST(HIPPattern, Glider_Tile) { testGliderDisplacement<HIPTileGameOfLife>(); }
+TEST(HIPPattern, Glider_Simple) {
+    testGliderDisplacement<HIPSimpleGameOfLife>();
+}
+TEST(HIPPattern, Glider_Tile) {
+    testGliderDisplacement<HIPTileGameOfLife>();
+}
 
 // -- BitPack engine tests -----------------------------------------------------
 
@@ -458,8 +538,8 @@ TEST(HIPBitPack, AllDeadStaysDead) {
 
 // -- Byte kernel wrappers (simple + tile) ------------------------------------
 
-class HIPKernelByteTest : public ::testing::TestWithParam<
-    void (*)(const uint8_t *, uint8_t *, size_t, size_t)> {};
+class HIPKernelByteTest : public ::testing::TestWithParam<void (*)(
+                              const uint8_t *, uint8_t *, size_t, size_t)> {};
 
 TEST_P(HIPKernelByteTest, Birth) {
     const size_t rows = 5, cols = 5;
@@ -468,7 +548,8 @@ TEST_P(HIPKernelByteTest, Birth) {
     in[1 * cols + 2] = 1;
     in[1 * cols + 3] = 1;
     GetParam()(in.data(), out.data(), rows, cols);
-    EXPECT_EQ(out[2 * cols + 2], 1u) << "dead cell with 3 neighbours should be born";
+    EXPECT_EQ(out[2 * cols + 2], 1u)
+        << "dead cell with 3 neighbours should be born";
 }
 
 TEST_P(HIPKernelByteTest, Underpopulation) {
@@ -481,7 +562,8 @@ TEST_P(HIPKernelByteTest, Underpopulation) {
 
 TEST_P(HIPKernelByteTest, BlinkerPeriod2) {
     const size_t rows = 5, cols = 5;
-    std::vector<uint8_t> in(rows * cols, 0), mid(rows * cols, 0), out(rows * cols, 0);
+    std::vector<uint8_t> in(rows * cols, 0), mid(rows * cols, 0),
+        out(rows * cols, 0);
     in[2 * cols + 1] = 1;
     in[2 * cols + 2] = 1;
     in[2 * cols + 3] = 1;
@@ -547,9 +629,9 @@ TEST_P(HIPKernelByteTest, LargeGridStillLife) {
     EXPECT_EQ(alive, 4u);
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    HIPKernelByte, HIPKernelByteTest,
-    ::testing::Values(hipSimpleKernelStep, hipTileKernelStep));
+INSTANTIATE_TEST_SUITE_P(HIPKernelByte, HIPKernelByteTest,
+                         ::testing::Values(hipSimpleKernelStep,
+                                           hipTileKernelStep));
 
 // -- BitPack kernel wrapper tests --------------------------------------------
 
@@ -557,7 +639,8 @@ TEST(HIPKernelBitPack, Birth) {
     const size_t rows = 5, cols = 5;
     size_t stride = (cols + 63) / 64;
     std::vector<uint64_t> in(rows * stride, 0), out(rows * stride, 0);
-    in[1 * stride] |= (uint64_t(1) << 1) | (uint64_t(1) << 2) | (uint64_t(1) << 3);
+    in[1 * stride] |=
+        (uint64_t(1) << 1) | (uint64_t(1) << 2) | (uint64_t(1) << 3);
     hipBitPackKernelStep(in.data(), out.data(), rows, stride, cols);
     EXPECT_TRUE((out[2 * stride] >> 2) & 1)
         << "dead cell with 3 neighbours should be born";
@@ -568,7 +651,8 @@ TEST(HIPKernelBitPack, BlinkerPeriod2) {
     size_t stride = (cols + 63) / 64;
     std::vector<uint64_t> in(rows * stride, 0), mid(rows * stride, 0),
         out(rows * stride, 0);
-    in[2 * stride] |= (uint64_t(1) << 1) | (uint64_t(1) << 2) | (uint64_t(1) << 3);
+    in[2 * stride] |=
+        (uint64_t(1) << 1) | (uint64_t(1) << 2) | (uint64_t(1) << 3);
     hipBitPackKernelStep(in.data(), mid.data(), rows, stride, cols);
     hipBitPackKernelStep(mid.data(), out.data(), rows, stride, cols);
     for (size_t i = 0; i < rows * stride; i++)
@@ -579,14 +663,18 @@ TEST(HIPKernelBitPack, NonMultiple64Cols) {
     const size_t rows = 5, cols = 70;
     size_t stride = (cols + 63) / 64;
     std::vector<uint64_t> in(rows * stride, 0), out(rows * stride, 0);
-    in[2 * stride + 1] |= (uint64_t(1) << (67 - 64)) | (uint64_t(1) << (68 - 64)) |
-                           (uint64_t(1) << (69 - 64));
+    in[2 * stride + 1] |= (uint64_t(1) << (67 - 64)) |
+                          (uint64_t(1) << (68 - 64)) |
+                          (uint64_t(1) << (69 - 64));
     hipBitPackKernelStep(in.data(), out.data(), rows, stride, cols);
     EXPECT_TRUE((out[1 * stride + 1] >> (68 - 64)) & 1) << "row 1, col 68 born";
-    EXPECT_TRUE((out[2 * stride + 1] >> (68 - 64)) & 1) << "row 2, col 68 survives";
+    EXPECT_TRUE((out[2 * stride + 1] >> (68 - 64)) & 1)
+        << "row 2, col 68 survives";
     EXPECT_TRUE((out[3 * stride + 1] >> (68 - 64)) & 1) << "row 3, col 68 born";
-    EXPECT_FALSE((out[2 * stride + 1] >> (67 - 64)) & 1) << "row 2, col 67 dies";
-    EXPECT_FALSE((out[2 * stride + 1] >> (69 - 64)) & 1) << "row 2, col 69 dies";
+    EXPECT_FALSE((out[2 * stride + 1] >> (67 - 64)) & 1)
+        << "row 2, col 67 dies";
+    EXPECT_FALSE((out[2 * stride + 1] >> (69 - 64)) & 1)
+        << "row 2, col 69 dies";
 }
 
 TEST(HIPKernelBitPack, LargeGridStillLife) {

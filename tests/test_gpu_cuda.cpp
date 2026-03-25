@@ -64,8 +64,12 @@ template <typename EngineT> void testBirth() {
         << "dead cell with 3 neighbours should be born";
 }
 
-TEST(CUDARule, Birth_Simple) { testBirth<CUDASimpleGameOfLife>(); }
-TEST(CUDARule, Birth_Tile) { testBirth<CUDATileGameOfLife>(); }
+TEST(CUDARule, Birth_Simple) {
+    testBirth<CUDASimpleGameOfLife>();
+}
+TEST(CUDARule, Birth_Tile) {
+    testBirth<CUDATileGameOfLife>();
+}
 
 template <typename EngineT> void testSurvival2() {
     Grid g(5, 5);
@@ -79,8 +83,12 @@ template <typename EngineT> void testSurvival2() {
         << "alive cell with 2 neighbours should survive";
 }
 
-TEST(CUDARule, Survival2_Simple) { testSurvival2<CUDASimpleGameOfLife>(); }
-TEST(CUDARule, Survival2_Tile) { testSurvival2<CUDATileGameOfLife>(); }
+TEST(CUDARule, Survival2_Simple) {
+    testSurvival2<CUDASimpleGameOfLife>();
+}
+TEST(CUDARule, Survival2_Tile) {
+    testSurvival2<CUDATileGameOfLife>();
+}
 
 template <typename EngineT> void testSurvival3() {
     Grid g(5, 5);
@@ -95,8 +103,12 @@ template <typename EngineT> void testSurvival3() {
         << "alive cell with 3 neighbours should survive";
 }
 
-TEST(CUDARule, Survival3_Simple) { testSurvival3<CUDASimpleGameOfLife>(); }
-TEST(CUDARule, Survival3_Tile) { testSurvival3<CUDATileGameOfLife>(); }
+TEST(CUDARule, Survival3_Simple) {
+    testSurvival3<CUDASimpleGameOfLife>();
+}
+TEST(CUDARule, Survival3_Tile) {
+    testSurvival3<CUDATileGameOfLife>();
+}
 
 template <typename EngineT> void testUnderpopulation0() {
     Grid g(5, 5);
@@ -108,8 +120,12 @@ template <typename EngineT> void testUnderpopulation0() {
         << "alive cell with 0 neighbours should die";
 }
 
-TEST(CUDARule, Underpop0_Simple) { testUnderpopulation0<CUDASimpleGameOfLife>(); }
-TEST(CUDARule, Underpop0_Tile) { testUnderpopulation0<CUDATileGameOfLife>(); }
+TEST(CUDARule, Underpop0_Simple) {
+    testUnderpopulation0<CUDASimpleGameOfLife>();
+}
+TEST(CUDARule, Underpop0_Tile) {
+    testUnderpopulation0<CUDATileGameOfLife>();
+}
 
 template <typename EngineT> void testUnderpopulation1() {
     Grid g(5, 5);
@@ -122,8 +138,12 @@ template <typename EngineT> void testUnderpopulation1() {
         << "alive cell with 1 neighbour should die";
 }
 
-TEST(CUDARule, Underpop1_Simple) { testUnderpopulation1<CUDASimpleGameOfLife>(); }
-TEST(CUDARule, Underpop1_Tile) { testUnderpopulation1<CUDATileGameOfLife>(); }
+TEST(CUDARule, Underpop1_Simple) {
+    testUnderpopulation1<CUDASimpleGameOfLife>();
+}
+TEST(CUDARule, Underpop1_Tile) {
+    testUnderpopulation1<CUDATileGameOfLife>();
+}
 
 template <typename EngineT> void testOvercrowding4() {
     Grid g(5, 5);
@@ -139,8 +159,12 @@ template <typename EngineT> void testOvercrowding4() {
         << "alive cell with 4 neighbours should die";
 }
 
-TEST(CUDARule, Overcrowding_Simple) { testOvercrowding4<CUDASimpleGameOfLife>(); }
-TEST(CUDARule, Overcrowding_Tile) { testOvercrowding4<CUDATileGameOfLife>(); }
+TEST(CUDARule, Overcrowding_Simple) {
+    testOvercrowding4<CUDASimpleGameOfLife>();
+}
+TEST(CUDARule, Overcrowding_Tile) {
+    testOvercrowding4<CUDATileGameOfLife>();
+}
 
 template <typename EngineT> void testDeadStaysDead() {
     Grid g(5, 5);
@@ -153,8 +177,12 @@ template <typename EngineT> void testDeadStaysDead() {
         << "dead cell with 2 neighbours should stay dead";
 }
 
-TEST(CUDARule, DeadStaysDead_Simple) { testDeadStaysDead<CUDASimpleGameOfLife>(); }
-TEST(CUDARule, DeadStaysDead_Tile) { testDeadStaysDead<CUDATileGameOfLife>(); }
+TEST(CUDARule, DeadStaysDead_Simple) {
+    testDeadStaysDead<CUDASimpleGameOfLife>();
+}
+TEST(CUDARule, DeadStaysDead_Tile) {
+    testDeadStaysDead<CUDATileGameOfLife>();
+}
 
 template <typename EngineT> void testDeadWith4() {
     Grid g(5, 5);
@@ -169,8 +197,12 @@ template <typename EngineT> void testDeadWith4() {
         << "dead cell with 4 neighbours should stay dead";
 }
 
-TEST(CUDARule, DeadWith4_Simple) { testDeadWith4<CUDASimpleGameOfLife>(); }
-TEST(CUDARule, DeadWith4_Tile) { testDeadWith4<CUDATileGameOfLife>(); }
+TEST(CUDARule, DeadWith4_Simple) {
+    testDeadWith4<CUDASimpleGameOfLife>();
+}
+TEST(CUDARule, DeadWith4_Tile) {
+    testDeadWith4<CUDATileGameOfLife>();
+}
 
 // -- Boundary tests -----------------------------------------------------------
 
@@ -185,8 +217,12 @@ template <typename EngineT> void testCornerTopLeft() {
         << "corner (0,0) with 1 neighbour should die";
 }
 
-TEST(CUDABoundary, CornerTopLeft_Simple) { testCornerTopLeft<CUDASimpleGameOfLife>(); }
-TEST(CUDABoundary, CornerTopLeft_Tile) { testCornerTopLeft<CUDATileGameOfLife>(); }
+TEST(CUDABoundary, CornerTopLeft_Simple) {
+    testCornerTopLeft<CUDASimpleGameOfLife>();
+}
+TEST(CUDABoundary, CornerTopLeft_Tile) {
+    testCornerTopLeft<CUDATileGameOfLife>();
+}
 
 template <typename EngineT> void testCornerTopRight() {
     Grid g(5, 8);
@@ -200,8 +236,12 @@ template <typename EngineT> void testCornerTopRight() {
         << "corner (0,7) with 3 neighbours should be born";
 }
 
-TEST(CUDABoundary, CornerTopRight_Simple) { testCornerTopRight<CUDASimpleGameOfLife>(); }
-TEST(CUDABoundary, CornerTopRight_Tile) { testCornerTopRight<CUDATileGameOfLife>(); }
+TEST(CUDABoundary, CornerTopRight_Simple) {
+    testCornerTopRight<CUDASimpleGameOfLife>();
+}
+TEST(CUDABoundary, CornerTopRight_Tile) {
+    testCornerTopRight<CUDATileGameOfLife>();
+}
 
 template <typename EngineT> void testCornerBottomLeft() {
     Grid g(5, 5);
@@ -215,8 +255,12 @@ template <typename EngineT> void testCornerBottomLeft() {
         << "corner (4,0) with 3 neighbours should be born";
 }
 
-TEST(CUDABoundary, CornerBottomLeft_Simple) { testCornerBottomLeft<CUDASimpleGameOfLife>(); }
-TEST(CUDABoundary, CornerBottomLeft_Tile) { testCornerBottomLeft<CUDATileGameOfLife>(); }
+TEST(CUDABoundary, CornerBottomLeft_Simple) {
+    testCornerBottomLeft<CUDASimpleGameOfLife>();
+}
+TEST(CUDABoundary, CornerBottomLeft_Tile) {
+    testCornerBottomLeft<CUDATileGameOfLife>();
+}
 
 template <typename EngineT> void testCornerBottomRight() {
     Grid g(5, 5);
@@ -230,8 +274,12 @@ template <typename EngineT> void testCornerBottomRight() {
         << "corner (4,4) with 2 neighbours should survive";
 }
 
-TEST(CUDABoundary, CornerBottomRight_Simple) { testCornerBottomRight<CUDASimpleGameOfLife>(); }
-TEST(CUDABoundary, CornerBottomRight_Tile) { testCornerBottomRight<CUDATileGameOfLife>(); }
+TEST(CUDABoundary, CornerBottomRight_Simple) {
+    testCornerBottomRight<CUDASimpleGameOfLife>();
+}
+TEST(CUDABoundary, CornerBottomRight_Tile) {
+    testCornerBottomRight<CUDATileGameOfLife>();
+}
 
 template <typename EngineT> void testTopEdge() {
     Grid g(5, 8);
@@ -245,8 +293,12 @@ template <typename EngineT> void testTopEdge() {
         << "top edge cell with 3 neighbours should be born";
 }
 
-TEST(CUDABoundary, TopEdge_Simple) { testTopEdge<CUDASimpleGameOfLife>(); }
-TEST(CUDABoundary, TopEdge_Tile) { testTopEdge<CUDATileGameOfLife>(); }
+TEST(CUDABoundary, TopEdge_Simple) {
+    testTopEdge<CUDASimpleGameOfLife>();
+}
+TEST(CUDABoundary, TopEdge_Tile) {
+    testTopEdge<CUDATileGameOfLife>();
+}
 
 template <typename EngineT> void testLeftEdge() {
     Grid g(5, 5);
@@ -260,8 +312,12 @@ template <typename EngineT> void testLeftEdge() {
         << "left edge cell with 3 neighbours should be born";
 }
 
-TEST(CUDABoundary, LeftEdge_Simple) { testLeftEdge<CUDASimpleGameOfLife>(); }
-TEST(CUDABoundary, LeftEdge_Tile) { testLeftEdge<CUDATileGameOfLife>(); }
+TEST(CUDABoundary, LeftEdge_Simple) {
+    testLeftEdge<CUDASimpleGameOfLife>();
+}
+TEST(CUDABoundary, LeftEdge_Tile) {
+    testLeftEdge<CUDATileGameOfLife>();
+}
 
 template <typename EngineT> void testRightEdge() {
     Grid g(5, 8);
@@ -275,8 +331,12 @@ template <typename EngineT> void testRightEdge() {
         << "right edge cell with 3 neighbours should be born";
 }
 
-TEST(CUDABoundary, RightEdge_Simple) { testRightEdge<CUDASimpleGameOfLife>(); }
-TEST(CUDABoundary, RightEdge_Tile) { testRightEdge<CUDATileGameOfLife>(); }
+TEST(CUDABoundary, RightEdge_Simple) {
+    testRightEdge<CUDASimpleGameOfLife>();
+}
+TEST(CUDABoundary, RightEdge_Tile) {
+    testRightEdge<CUDATileGameOfLife>();
+}
 
 template <typename EngineT> void testBottomEdge() {
     Grid g(5, 8);
@@ -290,8 +350,12 @@ template <typename EngineT> void testBottomEdge() {
         << "bottom edge cell with 3 neighbours should be born";
 }
 
-TEST(CUDABoundary, BottomEdge_Simple) { testBottomEdge<CUDASimpleGameOfLife>(); }
-TEST(CUDABoundary, BottomEdge_Tile) { testBottomEdge<CUDATileGameOfLife>(); }
+TEST(CUDABoundary, BottomEdge_Simple) {
+    testBottomEdge<CUDASimpleGameOfLife>();
+}
+TEST(CUDABoundary, BottomEdge_Tile) {
+    testBottomEdge<CUDATileGameOfLife>();
+}
 
 // -- Pattern tests ------------------------------------------------------------
 
@@ -306,8 +370,12 @@ template <typename EngineT> void testStillLifesStable() {
     ASSERT_EQ(alivePositions(after), expected);
 }
 
-TEST(CUDAPattern, StillLifes_Simple) { testStillLifesStable<CUDASimpleGameOfLife>(); }
-TEST(CUDAPattern, StillLifes_Tile) { testStillLifesStable<CUDATileGameOfLife>(); }
+TEST(CUDAPattern, StillLifes_Simple) {
+    testStillLifesStable<CUDASimpleGameOfLife>();
+}
+TEST(CUDAPattern, StillLifes_Tile) {
+    testStillLifesStable<CUDATileGameOfLife>();
+}
 
 template <typename EngineT> void testBlinkerPeriod2() {
     Grid g(5, 5);
@@ -322,8 +390,12 @@ template <typename EngineT> void testBlinkerPeriod2() {
     ASSERT_EQ(alivePositions(after), expected);
 }
 
-TEST(CUDAPattern, Blinker_Simple) { testBlinkerPeriod2<CUDASimpleGameOfLife>(); }
-TEST(CUDAPattern, Blinker_Tile) { testBlinkerPeriod2<CUDATileGameOfLife>(); }
+TEST(CUDAPattern, Blinker_Simple) {
+    testBlinkerPeriod2<CUDASimpleGameOfLife>();
+}
+TEST(CUDAPattern, Blinker_Tile) {
+    testBlinkerPeriod2<CUDATileGameOfLife>();
+}
 
 template <typename EngineT> void testAllDeadStaysDead() {
     Grid g(10, 10);
@@ -334,8 +406,12 @@ template <typename EngineT> void testAllDeadStaysDead() {
     EXPECT_EQ(after.aliveCells(), 0u);
 }
 
-TEST(CUDAPattern, AllDead_Simple) { testAllDeadStaysDead<CUDASimpleGameOfLife>(); }
-TEST(CUDAPattern, AllDead_Tile) { testAllDeadStaysDead<CUDATileGameOfLife>(); }
+TEST(CUDAPattern, AllDead_Simple) {
+    testAllDeadStaysDead<CUDASimpleGameOfLife>();
+}
+TEST(CUDAPattern, AllDead_Tile) {
+    testAllDeadStaysDead<CUDATileGameOfLife>();
+}
 
 template <typename EngineT> void testGliderDisplacement() {
     Grid ref(dataFile("glider.txt"));
@@ -357,8 +433,12 @@ template <typename EngineT> void testGliderDisplacement() {
     }
 }
 
-TEST(CUDAPattern, Glider_Simple) { testGliderDisplacement<CUDASimpleGameOfLife>(); }
-TEST(CUDAPattern, Glider_Tile) { testGliderDisplacement<CUDATileGameOfLife>(); }
+TEST(CUDAPattern, Glider_Simple) {
+    testGliderDisplacement<CUDASimpleGameOfLife>();
+}
+TEST(CUDAPattern, Glider_Tile) {
+    testGliderDisplacement<CUDATileGameOfLife>();
+}
 
 // -- BitPack engine tests -----------------------------------------------------
 
@@ -458,8 +538,8 @@ TEST(CUDABitPack, AllDeadStaysDead) {
 
 // -- Byte kernel wrappers (simple + tile) ------------------------------------
 
-class CUDAKernelByteTest : public ::testing::TestWithParam<
-    void (*)(const uint8_t *, uint8_t *, size_t, size_t)> {};
+class CUDAKernelByteTest : public ::testing::TestWithParam<void (*)(
+                               const uint8_t *, uint8_t *, size_t, size_t)> {};
 
 TEST_P(CUDAKernelByteTest, Birth) {
     const size_t rows = 5, cols = 5;
@@ -468,7 +548,8 @@ TEST_P(CUDAKernelByteTest, Birth) {
     in[1 * cols + 2] = 1;
     in[1 * cols + 3] = 1;
     GetParam()(in.data(), out.data(), rows, cols);
-    EXPECT_EQ(out[2 * cols + 2], 1u) << "dead cell with 3 neighbours should be born";
+    EXPECT_EQ(out[2 * cols + 2], 1u)
+        << "dead cell with 3 neighbours should be born";
 }
 
 TEST_P(CUDAKernelByteTest, Underpopulation) {
@@ -481,7 +562,8 @@ TEST_P(CUDAKernelByteTest, Underpopulation) {
 
 TEST_P(CUDAKernelByteTest, BlinkerPeriod2) {
     const size_t rows = 5, cols = 5;
-    std::vector<uint8_t> in(rows * cols, 0), mid(rows * cols, 0), out(rows * cols, 0);
+    std::vector<uint8_t> in(rows * cols, 0), mid(rows * cols, 0),
+        out(rows * cols, 0);
     in[2 * cols + 1] = 1;
     in[2 * cols + 2] = 1;
     in[2 * cols + 3] = 1;
@@ -551,9 +633,9 @@ TEST_P(CUDAKernelByteTest, LargeGridStillLife) {
     EXPECT_EQ(alive, 4u);
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    CUDAKernelByte, CUDAKernelByteTest,
-    ::testing::Values(cudaSimpleKernelStep, cudaTileKernelStep));
+INSTANTIATE_TEST_SUITE_P(CUDAKernelByte, CUDAKernelByteTest,
+                         ::testing::Values(cudaSimpleKernelStep,
+                                           cudaTileKernelStep));
 
 // -- BitPack kernel wrapper tests --------------------------------------------
 
@@ -561,7 +643,8 @@ TEST(CUDAKernelBitPack, Birth) {
     const size_t rows = 5, cols = 5;
     size_t stride = (cols + 63) / 64;
     std::vector<uint64_t> in(rows * stride, 0), out(rows * stride, 0);
-    in[1 * stride] |= (uint64_t(1) << 1) | (uint64_t(1) << 2) | (uint64_t(1) << 3);
+    in[1 * stride] |=
+        (uint64_t(1) << 1) | (uint64_t(1) << 2) | (uint64_t(1) << 3);
     cudaBitPackKernelStep(in.data(), out.data(), rows, stride, cols);
     EXPECT_TRUE((out[2 * stride] >> 2) & 1)
         << "dead cell with 3 neighbours should be born";
@@ -572,7 +655,8 @@ TEST(CUDAKernelBitPack, BlinkerPeriod2) {
     size_t stride = (cols + 63) / 64;
     std::vector<uint64_t> in(rows * stride, 0), mid(rows * stride, 0),
         out(rows * stride, 0);
-    in[2 * stride] |= (uint64_t(1) << 1) | (uint64_t(1) << 2) | (uint64_t(1) << 3);
+    in[2 * stride] |=
+        (uint64_t(1) << 1) | (uint64_t(1) << 2) | (uint64_t(1) << 3);
     cudaBitPackKernelStep(in.data(), mid.data(), rows, stride, cols);
     cudaBitPackKernelStep(mid.data(), out.data(), rows, stride, cols);
     for (size_t i = 0; i < rows * stride; i++)
@@ -585,15 +669,19 @@ TEST(CUDAKernelBitPack, NonMultiple64Cols) {
     size_t stride = (cols + 63) / 64;
     std::vector<uint64_t> in(rows * stride, 0), out(rows * stride, 0);
     // Blinker at row 2, cols 67-69
-    in[2 * stride + 1] |= (uint64_t(1) << (67 - 64)) | (uint64_t(1) << (68 - 64)) |
-                           (uint64_t(1) << (69 - 64));
+    in[2 * stride + 1] |= (uint64_t(1) << (67 - 64)) |
+                          (uint64_t(1) << (68 - 64)) |
+                          (uint64_t(1) << (69 - 64));
     cudaBitPackKernelStep(in.data(), out.data(), rows, stride, cols);
     // After 1 step: vertical at col 68
     EXPECT_TRUE((out[1 * stride + 1] >> (68 - 64)) & 1) << "row 1, col 68 born";
-    EXPECT_TRUE((out[2 * stride + 1] >> (68 - 64)) & 1) << "row 2, col 68 survives";
+    EXPECT_TRUE((out[2 * stride + 1] >> (68 - 64)) & 1)
+        << "row 2, col 68 survives";
     EXPECT_TRUE((out[3 * stride + 1] >> (68 - 64)) & 1) << "row 3, col 68 born";
-    EXPECT_FALSE((out[2 * stride + 1] >> (67 - 64)) & 1) << "row 2, col 67 dies";
-    EXPECT_FALSE((out[2 * stride + 1] >> (69 - 64)) & 1) << "row 2, col 69 dies";
+    EXPECT_FALSE((out[2 * stride + 1] >> (67 - 64)) & 1)
+        << "row 2, col 67 dies";
+    EXPECT_FALSE((out[2 * stride + 1] >> (69 - 64)) & 1)
+        << "row 2, col 69 dies";
 }
 
 TEST(CUDAKernelBitPack, LargeGridStillLife) {

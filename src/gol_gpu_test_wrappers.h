@@ -15,27 +15,27 @@
 
 #if GOL_CUDA
 
-void cudaSimpleKernelStep(const uint8_t *in, uint8_t *out,
-                          size_t rows, size_t cols);
+void cudaSimpleKernelStep(const uint8_t *in, uint8_t *out, size_t rows,
+                          size_t cols);
 
-void cudaTileKernelStep(const uint8_t *in, uint8_t *out,
-                        size_t rows, size_t cols);
+void cudaTileKernelStep(const uint8_t *in, uint8_t *out, size_t rows,
+                        size_t cols);
 
-void cudaBitPackKernelStep(const uint64_t *in, uint64_t *out,
-                           size_t rows, size_t stride, size_t cols);
+void cudaBitPackKernelStep(const uint64_t *in, uint64_t *out, size_t rows,
+                           size_t stride, size_t cols);
 
 #endif // GOL_CUDA
 
 #if GOL_HIP
 
-void hipSimpleKernelStep(const uint8_t *in, uint8_t *out,
-                         size_t rows, size_t cols);
+void hipSimpleKernelStep(const uint8_t *in, uint8_t *out, size_t rows,
+                         size_t cols);
 
-void hipTileKernelStep(const uint8_t *in, uint8_t *out,
-                       size_t rows, size_t cols);
+void hipTileKernelStep(const uint8_t *in, uint8_t *out, size_t rows,
+                       size_t cols);
 
-void hipBitPackKernelStep(const uint64_t *in, uint64_t *out,
-                          size_t rows, size_t stride, size_t cols);
+void hipBitPackKernelStep(const uint64_t *in, uint64_t *out, size_t rows,
+                          size_t stride, size_t cols);
 
 #endif // GOL_HIP
 

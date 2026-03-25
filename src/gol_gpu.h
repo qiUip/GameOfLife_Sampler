@@ -11,10 +11,10 @@ struct GpuOps {
     void (*free)(void *ptr);
     void (*copyH2D)(void *dst, const void *src, size_t bytes);
     void (*copyD2H)(void *dst, const void *src, size_t bytes);
-    void (*copy2D_H2D)(void *dst, size_t dpitch, const void *src,
-                       size_t spitch, size_t width, size_t height);
-    void (*copy2D_D2H)(void *dst, size_t dpitch, const void *src,
-                       size_t spitch, size_t width, size_t height);
+    void (*copy2D_H2D)(void *dst, size_t dpitch, const void *src, size_t spitch,
+                       size_t width, size_t height);
+    void (*copy2D_D2H)(void *dst, size_t dpitch, const void *src, size_t spitch,
+                       size_t width, size_t height);
     void (*memset)(void *ptr, int value, size_t bytes);
     void (*sync)();
     void (*checkLast)(const char *context);

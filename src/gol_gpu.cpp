@@ -4,8 +4,7 @@
 // loads/stores in tiled byte kernels.  For byte grids (CellT = uint8_t),
 // the stride is rounded up to a multiple of 4.  For word grids
 // (CellT = uint64_t), each element is already 8-byte aligned.
-template <typename CellT>
-static size_t paddedStride(size_t hostStride) {
+template <typename CellT> static size_t paddedStride(size_t hostStride) {
     if constexpr (sizeof(CellT) == 1)
         return (hostStride + 3) & ~size_t(3);
     else
@@ -14,8 +13,7 @@ static size_t paddedStride(size_t hostStride) {
 
 template <typename CellT, typename HostGridT>
 GPUEngine<CellT, HostGridT>::GPUEngine(HostGridT hostGrid, const GpuOps &ops)
-    : ops_(ops), hostGrid_(std::move(hostGrid)),
-      stride_(hostGrid_.getStride()),
+    : ops_(ops), hostGrid_(std::move(hostGrid)), stride_(hostGrid_.getStride()),
       deviceStride_(paddedStride<CellT>(stride_)) {
     rows_             = hostGrid_.getNumRows();
     cols_             = hostGrid_.getNumCols();
@@ -30,8 +28,7 @@ GPUEngine<CellT, HostGridT>::GPUEngine(HostGridT hostGrid, const GpuOps &ops)
     // Pitched copy — host and device strides may differ.
     size_t rowBytes = stride_ * sizeof(CellT);
     size_t devPitch = deviceStride_ * sizeof(CellT);
-    ops_.copy2D_H2D(d_current_, devPitch,
-                    hostGrid_.getData(), rowBytes,
+    ops_.copy2D_H2D(d_current_, devPitch, hostGrid_.getData(), rowBytes,
                     rowBytes, rows_);
 }
 
@@ -52,8 +49,7 @@ void GPUEngine<CellT, HostGridT>::takeStep() {
 
 template <typename CellT, typename HostGridT>
 void *GPUEngine<CellT, HostGridT>::getRowDataRaw(size_t row) {
-    ops_.copyD2H(hostGrid_.getRowData(row),
-                 d_current_ + row * deviceStride_,
+    ops_.copyD2H(hostGrid_.getRowData(row), d_current_ + row * deviceStride_,
                  stride_ * sizeof(CellT));
     return hostGrid_.getRowData(row);
 }
@@ -80,8 +76,7 @@ template <typename CellT, typename HostGridT>
 void GPUEngine<CellT, HostGridT>::printGrid() const {
     size_t rowBytes = stride_ * sizeof(CellT);
     size_t devPitch = deviceStride_ * sizeof(CellT);
-    ops_.copy2D_D2H(hostGrid_.getData(), rowBytes,
-                    d_current_, devPitch,
+    ops_.copy2D_D2H(hostGrid_.getData(), rowBytes, d_current_, devPitch,
                     rowBytes, rows_);
     hostGrid_.printGrid();
 }
@@ -91,8 +86,7 @@ void GPUEngine<CellT, HostGridT>::writeToFile(
     const std::string &filename) const {
     size_t rowBytes = stride_ * sizeof(CellT);
     size_t devPitch = deviceStride_ * sizeof(CellT);
-    ops_.copy2D_D2H(hostGrid_.getData(), rowBytes,
-                    d_current_, devPitch,
+    ops_.copy2D_D2H(hostGrid_.getData(), rowBytes, d_current_, devPitch,
                     rowBytes, rows_);
     hostGrid_.writeToFile(filename);
 }
