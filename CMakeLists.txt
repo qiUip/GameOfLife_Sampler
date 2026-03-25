@@ -22,7 +22,6 @@ add_library(gol_lib STATIC
 )
 target_include_directories(gol_lib PUBLIC src ${MPI_INCLUDE_PATH})
 # -march=native enables platform SIMD (NEON on Apple Silicon, AVX2 on x86).
-# For full optimisation build with: cmake -B build -DCMAKE_BUILD_TYPE=Release
 target_compile_options(gol_lib PRIVATE
   $<$<COMPILE_LANGUAGE:CXX>:-march=native>)
 target_link_libraries(gol_lib PUBLIC ${MPI_LIBRARIES} OpenMP::OpenMP_CXX)
