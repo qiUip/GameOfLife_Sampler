@@ -28,22 +28,17 @@ cmake --build build
 
 ### CUDA
 
-```
-cmake -B build
-cmake --build build
-```
-
 If CUDA is present on the system, it should be auto-detected via
 `find_package(CUDAToolkit)`. GPU architecture detection (`native`) requires
 CMake 3.24+. Specific GPU architecture can also be targetted manually with,
 e.g. `-DCMAKE_CUDA_ARCHITECTURES=80` for Ampere.
 
-### HIP
-
 ```
-cmake -B build
+cmake -B build -DCMAKE_CUDA_ARCHITECTURES=80
 cmake --build build
 ```
+
+### HIP
 
 If HIP is present on the system, it should be auto-detected via
 `find_package(hip)`. GPU architecture detection (`native`) requires CMake 3.24+
@@ -51,14 +46,21 @@ and `rocm_agent_enumerator` on `PATH`. Specific GPU architecture can also be
 targetted manually with, e.g. `-DCMAKE_HIP_ARCHITECTURES=gfx942` for
 MI300A/MI300X.
 
+```
+cmake -B build -DCMAKE_HIP_ARCHITECTURES=gfx942
+cmake --build build
+```
+
 ## Run
 
 ```
-./build/golSimulator -r 1000,1000,300000 -g 100 -e simd
+./build/golSimulator -r 1000,1000,50000 -g 100 -p -1 -e simd
 ```
 
-This creates a 1000x1000 grid with 300,000 alive cells, runs 100 generations
-using the SIMD engine. Use `-h` for the full list of options.
+This creates a 1000x1000 grid with 50,000 alive cells, runs 100 generations
+using the SIMD engine without printing the grid to screen.  
+
+Use `-h` for the full list of options.
 
 ## Tests
 
