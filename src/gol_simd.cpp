@@ -160,39 +160,40 @@ void SIMDGameOfLife::processInteriorCells(const uint8_t *__restrict__ p,
         o[col] = golRule(c[col],
                          aliveNeighbours<true, true, true, true>(p, c, n, col));
 
-#elif defined(__ARM_NEON__) || defined(__ARM_NEON)
-    // -- ARM NEON intrinsics -----------------------------------------------
-    constexpr size_t W = 16;
+#elif defined(__AVX512BW__)
+    // -- AVX512BW intrinsics -----------------------------------------------
+    constexpr size_t W = 64;
     size_t col         = 1;
     for (; col + W <= cols - 1; col += W) {
         __builtin_prefetch(p + col + W * 4, 0, 0);
         __builtin_prefetch(c + col + W * 4, 0, 0);
         __builtin_prefetch(n + col + W * 4, 0, 0);
-        const uint8x16_t pL = vld1q_u8(p + col - 1);
-        const uint8x16_t pC = vld1q_u8(p + col);
-        const uint8x16_t pR = vld1q_u8(p + col + 1);
-        const uint8x16_t cL = vld1q_u8(c + col - 1);
-        const uint8x16_t cC = vld1q_u8(c + col);
-        const uint8x16_t cR = vld1q_u8(c + col + 1);
-        const uint8x16_t nL = vld1q_u8(n + col - 1);
-        const uint8x16_t nC = vld1q_u8(n + col);
-        const uint8x16_t nR = vld1q_u8(n + col + 1);
+        const __m512i pL = _mm512_loadu_si512(p + col - 1);
+        const __m512i pC = _mm512_loadu_si512(p + col);
+        const __m512i pR = _mm512_loadu_si512(p + col + 1);
+        const __m512i cL = _mm512_loadu_si512(c + col - 1);
+        const __m512i cC = _mm512_loadu_si512(c + col);
+        const __m512i cR = _mm512_loadu_si512(c + col + 1);
+        const __m512i nL = _mm512_loadu_si512(n + col - 1);
+        const __m512i nC = _mm512_loadu_si512(n + col);
+        const __m512i nR = _mm512_loadu_si512(n + col + 1);
 
-        uint8x16_t nb = vaddq_u8(pL, pC);
-        nb            = vaddq_u8(nb, pR);
-        nb            = vaddq_u8(nb, cL);
-        nb            = vaddq_u8(nb, cR);
-        nb            = vaddq_u8(nb, nL);
-        nb            = vaddq_u8(nb, nC);
-        nb            = vaddq_u8(nb, nR);
+        __m512i nb = _mm512_add_epi8(pL, pC);
+        nb         = _mm512_add_epi8(nb, pR);
+        nb         = _mm512_add_epi8(nb, cL);
+        nb         = _mm512_add_epi8(nb, cR);
+        nb         = _mm512_add_epi8(nb, nL);
+        nb         = _mm512_add_epi8(nb, nC);
+        nb         = _mm512_add_epi8(nb, nR);
 
-        const uint8x16_t born = vceqq_u8(nb, vdupq_n_u8(3));
-        const uint8x16_t survive =
-            vandq_u8(vtstq_u8(cC, cC), vceqq_u8(nb, vdupq_n_u8(2)));
-        const uint8x16_t result =
-            vandq_u8(vorrq_u8(born, survive), vdupq_n_u8(1));
+        const __mmask64 born = _mm512_cmpeq_epi8_mask(nb, _mm512_set1_epi8(3));
+        const __mmask64 survive =
+            _kand_mask64(_mm512_cmpgt_epi8_mask(cC, _mm512_setzero_si512()),
+                         _mm512_cmpeq_epi8_mask(nb, _mm512_set1_epi8(2)));
+        const __m512i result =
+            _mm512_maskz_set1_epi8(_kor_mask64(born, survive), 1);
 
-        vst1q_u8(o + col, result);
+        _mm512_storeu_si512(o + col, result);
     }
     for (; col < cols - 1; ++col)
         o[col] = golRule(c[col],
@@ -237,40 +238,39 @@ void SIMDGameOfLife::processInteriorCells(const uint8_t *__restrict__ p,
         o[col] = golRule(c[col],
                          aliveNeighbours<true, true, true, true>(p, c, n, col));
 
-#elif defined(__AVX512BW__)
-    // -- AVX512BW intrinsics -----------------------------------------------
-    constexpr size_t W = 64;
+#elif defined(__ARM_NEON__) || defined(__ARM_NEON)
+    // -- ARM NEON intrinsics -----------------------------------------------
+    constexpr size_t W = 16;
     size_t col         = 1;
     for (; col + W <= cols - 1; col += W) {
         __builtin_prefetch(p + col + W * 4, 0, 0);
         __builtin_prefetch(c + col + W * 4, 0, 0);
         __builtin_prefetch(n + col + W * 4, 0, 0);
-        const __m512i pL = _mm512_loadu_si512(p + col - 1);
-        const __m512i pC = _mm512_loadu_si512(p + col);
-        const __m512i pR = _mm512_loadu_si512(p + col + 1);
-        const __m512i cL = _mm512_loadu_si512(c + col - 1);
-        const __m512i cC = _mm512_loadu_si512(c + col);
-        const __m512i cR = _mm512_loadu_si512(c + col + 1);
-        const __m512i nL = _mm512_loadu_si512(n + col - 1);
-        const __m512i nC = _mm512_loadu_si512(n + col);
-        const __m512i nR = _mm512_loadu_si512(n + col + 1);
+        const uint8x16_t pL = vld1q_u8(p + col - 1);
+        const uint8x16_t pC = vld1q_u8(p + col);
+        const uint8x16_t pR = vld1q_u8(p + col + 1);
+        const uint8x16_t cL = vld1q_u8(c + col - 1);
+        const uint8x16_t cC = vld1q_u8(c + col);
+        const uint8x16_t cR = vld1q_u8(c + col + 1);
+        const uint8x16_t nL = vld1q_u8(n + col - 1);
+        const uint8x16_t nC = vld1q_u8(n + col);
+        const uint8x16_t nR = vld1q_u8(n + col + 1);
 
-        __m512i nb = _mm512_add_epi8(pL, pC);
-        nb         = _mm512_add_epi8(nb, pR);
-        nb         = _mm512_add_epi8(nb, cL);
-        nb         = _mm512_add_epi8(nb, cR);
-        nb         = _mm512_add_epi8(nb, nL);
-        nb         = _mm512_add_epi8(nb, nC);
-        nb         = _mm512_add_epi8(nb, nR);
+        uint8x16_t nb = vaddq_u8(pL, pC);
+        nb            = vaddq_u8(nb, pR);
+        nb            = vaddq_u8(nb, cL);
+        nb            = vaddq_u8(nb, cR);
+        nb            = vaddq_u8(nb, nL);
+        nb            = vaddq_u8(nb, nC);
+        nb            = vaddq_u8(nb, nR);
 
-        const __mmask64 born = _mm512_cmpeq_epi8_mask(nb, _mm512_set1_epi8(3));
-        const __mmask64 survive =
-            _kand_mask64(_mm512_cmpgt_epi8_mask(cC, _mm512_setzero_si512()),
-                         _mm512_cmpeq_epi8_mask(nb, _mm512_set1_epi8(2)));
-        const __m512i result =
-            _mm512_maskz_set1_epi8(_kor_mask64(born, survive), 1);
+        const uint8x16_t born = vceqq_u8(nb, vdupq_n_u8(3));
+        const uint8x16_t survive =
+            vandq_u8(vtstq_u8(cC, cC), vceqq_u8(nb, vdupq_n_u8(2)));
+        const uint8x16_t result =
+            vandq_u8(vorrq_u8(born, survive), vdupq_n_u8(1));
 
-        _mm512_storeu_si512(o + col, result);
+        vst1q_u8(o + col, result);
     }
     for (; col < cols - 1; ++col)
         o[col] = golRule(c[col],
